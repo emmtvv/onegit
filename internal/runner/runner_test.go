@@ -120,15 +120,16 @@ func runJobs(t *testing.T, f *fakeServer, workdir string, capacity int) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Count the jobs before the runner starts taking them off the queue.
+	f.mu.Lock()
+	n := len(f.queue)
+	f.mu.Unlock()
 	ctx, cancel := context.WithCancel(context.Background())
 	stopped := make(chan struct{})
 	go func() {
 		r.Run(ctx)
 		close(stopped)
 	}()
-	f.mu.Lock()
-	n := len(f.queue)
-	f.mu.Unlock()
 	for i := 0; i < n; i++ {
 		select {
 		case <-f.done:
