@@ -1,0 +1,30 @@
+{{define "content"}}{{$d := .Data}}
+<div class="box">
+  <div class="box-header">{{template "icon-package"}}<strong>Container registry</strong></div>
+  <div class="pad registry-help">
+    <p class="muted">Sign in with your username and password, or with an <a href="/settings/tokens">access token</a> (required for SSO accounts). Readers can pull; pushing and deleting need write access.</p>
+    <div class="copy-field"><input readonly value="docker login {{$d.Host}}"><button type="button" class="btn btn-sm" onclick="copyPrev(this)">{{template "icon-copy"}}</button></div>
+    <div class="copy-field"><input readonly value="docker tag my-image {{$d.Host}}/my-image:latest && docker push {{$d.Host}}/my-image:latest"><button type="button" class="btn btn-sm" onclick="copyPrev(this)">{{template "icon-copy"}}</button></div>
+  </div>
+</div>
+<form class="toolbar" method="get"><input type="search" name="q" value="{{$d.Query}}" placeholder="Find an image…" class="search-input"></form>
+<div class="box">
+  {{if $d.Images}}
+  <table class="table">
+    <thead><tr><th>Image</th><th>Tags</th><th>Latest size</th><th>Updated</th></tr></thead>
+    <tbody>
+    {{range $d.Images}}
+      <tr>
+        <td>{{template "icon-package"}} <a href="{{pkgurl .Repo}}"><strong class="mono">{{.Repo}}</strong></a></td>
+        <td>{{.Tags}}</td>
+        <td>{{if .Size}}{{bytes .Size}}{{else}}<span class="muted">—</span>{{end}}</td>
+        <td><span class="muted" title="{{datetime .UpdatedAt}}">{{ago .UpdatedAt}}</span></td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <div class="blob-note">{{if $d.Query}}No images match “{{$d.Query}}”.{{else}}No images yet. Push one with the commands above.{{end}}</div>
+  {{end}}
+</div>
+{{end}}

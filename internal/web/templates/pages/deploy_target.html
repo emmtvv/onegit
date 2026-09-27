@@ -1,0 +1,20 @@
+{{define "content"}}{{$d := .Data}}
+<nav class="breadcrumbs"><a href="/deploy">Deployments</a><span class="sep">/</span><strong class="mono">{{$d.Label}}</strong></nav>
+<div class="toolbar"><span class="spacer"></span>{{if .User}}<a class="btn btn-primary" href="/deploy/new?{{$d.Query}}">{{template "icon-rocket"}}Deploy</a>{{end}}</div>
+<div class="box">
+  <table class="table">
+    <thead><tr><th>Status</th><th>Version</th><th>Deployment</th><th>By</th><th>When</th><th></th></tr></thead>
+    <tbody>{{range $d.History}}
+      <tr>
+        <td>{{template "status-icon" .Status}} <a href="/actions/jobs/{{.JobID}}">{{.Status}}</a></td>
+        <td><a class="sha" href="/commit/{{.SHA}}">{{shortsha .SHA}}</a></td>
+        <td>{{with .DeploymentID}}<a href="/deploy/{{deint64 .}}">#{{deint64 .}}</a>{{end}}</td>
+        <td>{{.By}}</td>
+        <td class="muted" title="{{datetime .At}}">{{ago .At}}</td>
+        <td class="right">{{if and $.User (eq .Status "success")}}<a class="btn btn-sm" href="/deploy/new?{{$d.Query}}&ref={{.SHA}}&check=1">Redeploy</a>{{end}}</td>
+      </tr>
+    {{else}}<tr><td colspan="6" class="muted">Nothing has been deployed here yet.</td></tr>{{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}

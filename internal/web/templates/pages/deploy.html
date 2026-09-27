@@ -1,0 +1,49 @@
+{{define "content"}}{{$d := .Data}}
+<div class="toolbar">
+  <h2 class="page-title">Deployments</h2>
+  <span class="spacer"></span>
+  {{if .User}}<a class="btn btn-primary" href="/deploy/new">{{template "icon-rocket"}}New deployment</a>{{end}}
+</div>
+{{if not $d.Dims}}
+<div class="box blob-note">No deploy targets are configured yet. An administrator defines them under <a href="/admin/deploy">Admin → Deploy rules</a>.</div>
+{{end}}
+{{if $d.Pending}}
+<div class="box">
+  <div class="box-header"><strong>Waiting for approval</strong></div>
+  {{range $d.Pending}}{{template "deployment-row" .}}{{end}}
+</div>
+{{end}}
+{{if $d.Matrix}}
+<div class="box deploy-matrix">
+  <table class="table">
+    <thead><tr><th>{{(index $d.Dims 0).Name}} \ {{(index $d.Dims 1).Name}}</th>{{range $d.Cols}}<th>{{.}}</th>{{end}}</tr></thead>
+    <tbody>{{range $d.Matrix}}
+      <tr><td><strong class="mono">{{.Value}}</strong></td>
+      {{range .Cells}}<td>{{with .Last}}<a class="sha" href="/commit/{{.SHA}}">{{shortsha .SHA}}</a> <a class="muted small" href="/deploy/target?key={{queryesc .TargetKey}}" title="{{datetime .At}} by {{.By}}">{{ago .At}}</a>{{else}}<span class="muted">—</span>{{end}}</td>{{end}}
+      </tr>{{end}}
+    </tbody>
+  </table>
+</div>
+{{else if $d.Cells}}
+<div class="box">
+  <table class="table"><thead><tr><th>Target</th><th>Version</th><th>Deployed</th></tr></thead><tbody>
+  {{range $d.Cells}}<tr><td><a href="/deploy/target?key={{queryesc .Key}}">{{targetlabel .Target $d.Dims}}</a></td><td><a class="sha" href="/commit/{{.Last.SHA}}">{{shortsha .Last.SHA}}</a></td><td class="muted">{{ago .Last.At}} by {{.Last.By}}</td></tr>{{end}}
+  </tbody></table>
+</div>
+{{end}}
+<div class="box">
+  <div class="box-header"><strong>Recent deployments</strong></div>
+  {{range $d.Recent}}{{template "deployment-row" .}}{{else}}<div class="blob-note">No deployments yet.</div>{{end}}
+</div>
+{{end}}
+
+{{define "deployment-row"}}
+<div class="run-row">
+  {{template "status-icon" (deploystatus .Status)}}
+  <div class="run-main">
+    <a href="/deploy/{{.ID}}"><strong>#{{.ID}}</strong></a> <span class="badge badge-st badge-{{.Status}}">{{.Status}}</span>
+    {{range $i, $l := .Labels}}{{if lt $i 6}} <span class="label mono">{{$l}}</span>{{end}}{{end}}{{if gt (len .Labels) 6}} <span class="muted small">+{{sub (len .Labels) 6}} more</span>{{end}}
+    <div class="muted small"><a class="sha" href="/commit/{{.SHA}}">{{shortsha .SHA}}</a> ({{.Ref}}) · requested by {{.RequestedByName}} · <span title="{{datetime .CreatedAt}}">{{ago .CreatedAt}}</span>{{if .Comment}} · {{.Comment}}{{end}}</div>
+  </div>
+</div>
+{{end}}

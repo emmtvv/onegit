@@ -1,0 +1,15 @@
+{{define "content"}}
+<div class="box empty-repo">
+  <h2>This repository is empty</h2>
+  <p class="muted">Push an existing repository to get started.</p>
+  <h3>Clone URL</h3>
+  <div class="copy-field"><input readonly value="{{.Cfg.HTTPCloneURL}}"><button type="button" class="btn btn-sm" onclick="copyPrev(this)">{{template "icon-copy"}}</button></div>
+  <h3>Push an existing repository</h3>
+<pre class="snippet">git remote add origin {{.Cfg.HTTPCloneURL}}
+git push -u origin {{.Cfg.Repo.DefaultBranch}}</pre>
+  <h3>Migrating from another server</h3>
+<pre class="snippet">git clone --mirror &lt;old-url&gt; repo.git
+cd repo.git
+git push --mirror {{.Cfg.HTTPCloneURL}}</pre>
+</div>
+{{end}}

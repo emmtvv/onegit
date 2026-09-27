@@ -1,0 +1,36 @@
+{{define "content"}}
+<div class="with-sidenav">
+  {{template "settings-nav" "tokens"}}
+  <div class="grow">
+    {{with .Data.Created}}
+    <div class="flash flash-success">
+      <p><strong>Copy your new token now.</strong> You won't be able to see it again.</p>
+      <div class="copy-field"><input readonly value="{{.}}"><button type="button" class="btn btn-sm" onclick="copyPrev(this)">{{template "icon-copy"}}</button></div>
+    </div>
+    {{end}}
+    <div class="box">
+      <div class="box-header"><strong>Personal access tokens</strong></div>
+      {{range .Data.Tokens}}
+      <div class="key-row">
+        {{template "icon-key"}}
+        <div class="grow">
+          <strong>{{.Name}}</strong> <span class="muted mono">{{.Prefix}}…</span>
+          <div class="muted small">Created {{date .CreatedAt}} · {{with .LastUsed}}Last used {{ago .}}{{else}}Never used{{end}}</div>
+        </div>
+        <form method="post" action="/settings/tokens/{{.ID}}/delete" onsubmit="return confirm('Revoke this token?')"><button class="btn btn-sm btn-danger">Revoke</button></form>
+      </div>
+      {{else}}
+      <div class="blob-note">No tokens yet.</div>
+      {{end}}
+    </div>
+    <div class="box pad">
+      <h2>Generate a new token</h2>
+      <p class="muted">Tokens work as passwords for git over HTTPS and for the API. Use any username (or your own) with the token as password.</p>
+      <form method="post" action="/settings/tokens" class="form narrow">
+        <label>Name<input name="name" placeholder="e.g. CI deploy" required></label>
+        <button class="btn btn-primary" type="submit">Generate token</button>
+      </form>
+    </div>
+  </div>
+</div>
+{{end}}

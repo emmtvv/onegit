@@ -1,0 +1,50 @@
+{{define "content"}}{{$d := .Data}}{{$w := and .User .User.CanWrite}}
+<nav class="breadcrumbs"><a href="/packages">Packages</a><span class="sep">/</span><strong class="mono">{{$d.Name}}</strong></nav>
+{{if $d.Latest}}
+<div class="copy-field pull-cmd"><input readonly value="docker pull {{$d.Image}}:{{$d.Latest}}"><button type="button" class="btn btn-sm" onclick="copyPrev(this)">{{template "icon-copy"}}</button></div>
+{{end}}
+<form class="toolbar" method="get">
+  <input type="search" name="q" value="{{$d.Query}}" placeholder="Find a version…" class="search-input">
+  <span class="muted">{{$d.Total}} version{{if ne $d.Total 1}}s{{end}}</span>
+</form>
+<div class="box">
+  <table class="table">
+    <thead><tr><th>Version</th><th>Digest</th><th>Type</th><th>Size</th><th>Pushed</th>{{if $w}}<th></th>{{end}}</tr></thead>
+    <tbody>
+    {{range $d.Versions}}
+      <tr>
+        <td>{{if .Tagged}}{{template "icon-tag"}} <a href="{{.URL}}"><strong class="mono">{{.Name}}</strong></a>{{else}}<a class="muted mono" href="{{.URL}}">untagged</a>{{end}}</td>
+        <td><a class="sha" href="{{.URL}}" title="{{.Manifest.Digest}}">{{shortsha (slice .Manifest.Digest 7)}}</a>
+          <button type="button" class="btn btn-sm btn-icon" title="Copy image reference" data-copy="{{$d.Image}}@{{.Manifest.Digest}}" onclick="copyData(this)">{{template "icon-copy"}}</button></td>
+        <td>{{.Kind}}{{range .Platforms}} <span class="label mono">{{.}}</span>{{end}}</td>
+        <td>{{bytes .Manifest.TotalSize}}</td>
+        <td><span class="muted" title="{{datetime .UpdatedAt}}">{{ago .UpdatedAt}} by {{.PushedBy}}</span></td>
+        {{if $w}}<td class="right">
+          <form method="post" action="/packages/-/delete" onsubmit="return confirm('Delete {{$d.Name}} {{.Name}}?')">
+            <input type="hidden" name="name" value="{{$d.Name}}"><input type="hidden" name="version" value="{{.Name}}">
+            <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+          </form>
+        </td>{{end}}
+      </tr>
+    {{else}}
+      <tr><td colspan="6" class="muted">{{if $d.Query}}No versions match “{{$d.Query}}”.{{else}}No versions.{{end}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+<div class="pager">
+  {{if gt $d.Page 1}}<a class="btn" href="?q={{queryesc $d.Query}}&page={{sub $d.Page 1}}">Newer</a>{{end}}
+  {{if $d.HasNext}}<a class="btn" href="?q={{queryesc $d.Query}}&page={{add $d.Page 1}}">Older</a>{{end}}
+</div>
+{{if $w}}
+<div class="box danger-zone">
+  <div class="box-header"><strong>Delete image</strong></div>
+  <div class="pad danger-row">
+    <span>Delete <span class="mono">{{$d.Name}}</span> with all {{$d.Total}} versions. This cannot be undone.</span>
+    <form method="post" action="/packages/-/delete-package" onsubmit="return confirm('Delete the image {{$d.Name}} and ALL its versions?')">
+      <input type="hidden" name="name" value="{{$d.Name}}"><button class="btn btn-sm btn-danger" type="submit">Delete image</button>
+    </form>
+  </div>
+</div>
+{{end}}
+{{end}}

@@ -1,0 +1,34 @@
+{{define "content"}}{{$d := .Data}}{{$ref := $d.Ref.Name}}
+<div class="toolbar">
+  {{template "refpicker" (dict "Ref" $d.Ref "Path" $d.Path "Kind" "tree" "Branches" $d.Branches "Tags" $d.Tags)}}
+  {{template "breadcrumbs" (dict "Ref" $ref "Path" $d.Path "Repo" .Cfg.Repo.Name)}}
+  <span class="spacer"></span>
+  <a class="btn btn-sm" href="/commits/{{pathesc $ref $d.Path}}">{{template "icon-history"}}History</a>
+  {{template "clone" .Cfg}}
+</div>
+<div class="box">
+  {{with $d.Head}}<div class="box-header">{{template "commitline" .}}</div>{{end}}
+  <table class="files">
+    <tbody>
+    {{if $d.Path}}<tr><td class="name" colspan="3"><a href="/tree/{{pathesc $ref (parentdir $d.Path)}}">..</a></td></tr>{{end}}
+    {{range $d.Rows}}
+      <tr>
+        <td class="name">
+          {{if .Entry.IsDir}}{{diricon .Entry.Name}}<a href="/tree/{{pathesc $ref .Entry.Path}}">{{.Entry.Name}}</a>
+          {{else if eq (print .Entry.Type) "commit"}}{{template "icon-submodule"}}<span>{{.Entry.Name}} <span class="muted">@ {{shortsha .Entry.SHA}}</span></span>
+          {{else}}{{fileicon .Entry.Name}}<a href="/blob/{{pathesc $ref .Entry.Path}}">{{.Entry.Name}}</a>{{end}}
+        </td>
+        <td class="msg">{{with .Commit}}<a class="muted-link" href="/commit/{{.SHA}}">{{.Subject}}</a>{{end}}</td>
+        <td class="age">{{with .Commit}}<span title="{{datetime .Author.When}}">{{ago .Author.When}}</span>{{end}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{if $d.ReadmeHTML}}
+<div class="box readme">
+  <div class="box-header">{{fileicon $d.Readme.Name}}<a class="muted-link" href="/blob/{{pathesc $ref $d.Readme.Path}}">{{$d.Readme.Name}}</a></div>
+  <div class="markdown">{{$d.ReadmeHTML}}</div>
+</div>
+{{end}}
+{{end}}

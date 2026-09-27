@@ -1,0 +1,25 @@
+onegit
+Copyright 2026 Egor Matveev
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product bundles the following third-party fonts, embedded from
+internal/web/static/fonts/ and served as static assets:
+
+- Onest - https://github.com/simpals/onest
+  Copyright 2021 The Onest Project Authors
+  Licensed under the SIL Open Font License, Version 1.1.
+
+- Bricolage Grotesque - https://github.com/ateliertriay/bricolage
+  Copyright 2022 The Bricolage Grotesque Project Authors
+  Licensed under the SIL Open Font License, Version 1.1.
+
+- Fragment Mono - https://github.com/weiweihuanghuang/fragment-mono
+  Copyright 2022 The Fragment-Mono Project Authors
+  Licensed under the SIL Open Font License, Version 1.1.
+
+The full license text is in internal/web/static/fonts/OFL.txt. The files are
+unmodified subsets of the upstream fonts.
+
+Go module dependencies are listed in go.mod; their licenses ship with their
+sources.

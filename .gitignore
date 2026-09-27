@@ -1,0 +1,14 @@
+# Local configuration and data
+/.env
+/data/
+
+# Build output
+/bin/
+/onegit
+coverage.out
+coverage.html
+
+# Editors and OS files
+.DS_Store
+.idea/
+.vscode/

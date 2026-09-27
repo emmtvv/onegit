@@ -1,0 +1,57 @@
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      # Best-effort calls whose failure is either harmless or already
+      # visible elsewhere (a broken response, a missing cache entry).
+      exclude-functions:
+        - (io.Closer).Close
+        - (*io.PipeWriter).Close
+        - (*compress/gzip.Reader).Close
+        - (*github.com/minio/minio-go/v7.Object).Close
+        - (*github.com/redis/go-redis/v9.Client).Close
+        - (net/http.ResponseWriter).Write
+        - (*net/http.ResponseController).Flush
+        - (*encoding/json.Encoder).Encode
+        - (*bytes.Buffer).WriteTo
+        - (*flag.FlagSet).Parse
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - io.Copy
+        - mime.AddExtensionType
+        - os.Remove
+        - os.RemoveAll
+        - os.Setenv
+        - syscall.Kill
+        # Audit entries, usage timestamps and caches never fail a request.
+        - (*onegit/internal/store.Store).Audit
+        - (*onegit/internal/store.Store).AddPullEvent
+        - (*onegit/internal/store.Store).TouchRegistryBlob
+        - (*onegit/internal/store.Store).TouchRunner
+        - (*onegit/internal/kv.KV).Close
+        - (*onegit/internal/kv.KV).SetJSON
+    staticcheck:
+      checks:
+        - all
+        # Defaults of golangci-lint.
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        # Style suggestions, not bugs.
+        - -QF1001
+        - -QF1003
+  exclusions:
+    rules:
+      # Tests and test helpers ignore errors of setup/cleanup calls freely.
+      - path: (_test\.go|internal/testutil/)
+        linters:
+          - errcheck
+
+formatters:
+  enable:
+    - gofmt

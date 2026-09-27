@@ -1,0 +1,56 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}</title>
+<link rel="stylesheet" href="/static/fonts/fonts.css">
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/chroma.css">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<header class="topbar">
+  <div class="container topbar-inner">
+    <a class="brand" href="/">{{template "icon-logo"}}<span>{{.Cfg.Repo.Name}}</span></a>
+    <div class="spacer"></div>
+    {{if .User}}
+      <details class="dropdown user-menu">
+        <summary>{{avatar .User.Username .User.Email}}<span>{{.User.Username}}</span></summary>
+        <div class="menu menu-right">
+          <div class="menu-header">Signed in as <strong>{{.User.Username}}</strong></div>
+          <a href="/settings">Settings</a>
+          <a href="/settings/tokens">Access tokens</a>
+          {{if .User.IsAdmin}}<a href="/admin/users">Administration</a>{{end}}
+          <form method="post" action="/logout"><button class="menu-item" type="submit">Sign out</button></form>
+        </div>
+      </details>
+    {{else}}
+      <a class="btn btn-sm" href="/login">Sign in</a>
+    {{end}}
+  </div>
+</header>
+{{if or .User .Cfg.Repo.PublicRead}}{{if .Tab}}
+<nav class="tabs">
+  <div class="container">
+    <a class="{{if eq .Tab "code"}}active{{end}}" href="/">{{template "icon-code"}}Code</a>
+    <a class="{{if eq .Tab "commits"}}active{{end}}" href="/commits/{{pathesc .Branch}}">{{template "icon-commit"}}Commits</a>
+    <a class="{{if eq .Tab "branches"}}active{{end}}" href="/branches">{{template "icon-branch"}}Branches</a>
+    <a class="{{if eq .Tab "tags"}}active{{end}}" href="/tags">{{template "icon-tag"}}Tags</a>
+    <a class="{{if eq .Tab "pulls"}}active{{end}}" href="/pulls">{{template "icon-pr"}}Pull requests{{if .OpenPulls}}<span class="counter">{{.OpenPulls}}</span>{{end}}</a>
+    {{if .Cfg.Registry.Enabled}}<a class="{{if eq .Tab "packages"}}active{{end}}" href="/packages">{{template "icon-package"}}Packages</a>{{end}}
+    <a class="{{if eq .Tab "actions"}}active{{end}}" href="/actions">{{template "icon-play"}}Actions</a>
+    <a class="{{if eq .Tab "deploy"}}active{{end}}" href="/deploy">{{template "icon-rocket"}}Deployments</a>
+    {{if and .User .User.IsAdmin}}<a class="{{if eq .Tab "admin"}}active{{end}} tab-right" href="/admin/users">{{template "icon-gear"}}Admin</a>{{end}}
+  </div>
+</nav>
+{{end}}{{end}}
+<main class="container">
+  {{if .Flash}}<div class="flash">{{.Flash}}</div>{{end}}
+  {{if .Error}}<div class="flash flash-error">{{.Error}}</div>{{end}}
+  {{template "content" .}}
+</main>
+<footer class="container footer">onegit</footer>
+{{template "scripts"}}
+</body>
+</html>{{end}}

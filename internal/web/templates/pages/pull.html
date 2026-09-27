@@ -1,0 +1,324 @@
+{{define "content"}}{{$d := .Data}}{{$p := $d.Pull}}{{$u := .User}}
+<div class="pull-header">
+  <div class="pull-title-row">
+    <h1 class="pull-h1">{{$p.Title}} <span class="muted">#{{$p.ID}}</span></h1>
+    {{if $d.CanEdit}}
+    <details class="dropdown">
+      <summary class="btn btn-sm">Edit</summary>
+      <div class="menu menu-right edit-pop">
+        <form method="post" action="/pulls/{{$p.ID}}/edit" class="form">
+          <label>Title<input name="title" value="{{$p.Title}}" required></label>
+          <label>Description<textarea name="body" rows="8">{{$p.Body}}</textarea></label>
+          <div><button class="btn btn-primary btn-sm" type="submit">Save</button></div>
+        </form>
+      </div>
+    </details>
+    {{end}}
+  </div>
+  <div class="pull-sub">
+    {{template "pull-state" $p}}
+    <span><strong>{{$p.AuthorName}}</strong>
+    {{if $p.IsMerged}}merged {{$d.CommitCount}} commit{{if ne $d.CommitCount 1}}s{{end}} into{{else}}wants to merge {{$d.CommitCount}} commit{{if ne $d.CommitCount 1}}s{{end}} into{{end}}
+    <a class="branch-name" href="/tree/{{pathesc $p.BaseBranch}}">{{$p.BaseBranch}}</a> from
+    {{if $d.HeadAlive}}<a class="branch-name" href="/tree/{{pathesc $p.HeadBranch}}">{{$p.HeadBranch}}</a>{{else}}<span class="branch-name deleted" title="Branch deleted">{{$p.HeadBranch}}</span>{{end}}</span>
+  </div>
+</div>
+
+<nav class="subtabs">
+  <a class="{{if eq $d.View "conversation"}}active{{end}}" href="/pulls/{{$p.ID}}">{{template "icon-comment"}}Conversation</a>
+  <a class="{{if eq $d.View "commits"}}active{{end}}" href="/pulls/{{$p.ID}}/commits">{{template "icon-commit"}}Commits<span class="counter">{{$d.CommitCount}}</span></a>
+  <a class="{{if eq $d.View "files"}}active{{end}}" href="/pulls/{{$p.ID}}/files">{{template "icon-file-diff"}}Files changed<span class="counter">{{$d.FileCount}}</span></a>
+  <span class="spacer"></span>
+  {{if and $u $p.IsOpen}}
+  <details class="dropdown">
+    <summary class="btn btn-sm btn-primary">Review<span class="caret"></span></summary>
+    <div class="menu menu-right review-pop">
+      <form method="post" action="/pulls/{{$p.ID}}/reviews" class="form">
+        <textarea name="body" rows="4" placeholder="Leave a comment (Markdown)"></textarea>
+        <label class="check"><input type="radio" name="state" value="commented" checked> <span><strong>Comment</strong><br><span class="muted small">General feedback without explicit approval.</span></span></label>
+        {{if and $d.CanWrite (not $d.IsAuthor)}}
+        <label class="check"><input type="radio" name="state" value="approved"> <span><strong>Approve</strong><br><span class="muted small">Approve merging these changes.</span></span></label>
+        <label class="check"><input type="radio" name="state" value="changes_requested"> <span><strong>Request changes</strong><br><span class="muted small">Feedback that must be addressed before merging.</span></span></label>
+        {{end}}
+        <div><button class="btn btn-primary btn-sm" type="submit">Submit review</button></div>
+      </form>
+    </div>
+  </details>
+  {{end}}
+</nav>
+
+{{if eq $d.View "conversation"}}{{template "pull-conversation" .}}
+{{else if eq $d.View "commits"}}{{template "pull-commits" .}}
+{{else}}{{template "pull-files" .}}{{end}}
+{{template "pull-scripts"}}
+{{end}}
+
+{{define "pull-conversation"}}{{$d := .Data}}{{$p := $d.Pull}}{{$u := .User}}
+<div class="timeline">
+  <div class="box tl-comment">
+    <div class="box-header">{{avatar $p.AuthorName $p.AuthorEmail}} <strong>{{$p.AuthorName}}</strong> <span class="muted">opened <span title="{{datetime $p.CreatedAt}}">{{ago $p.CreatedAt}}</span></span></div>
+    <div class="markdown">{{if $p.Body}}{{markdown $p.Body}}{{else}}<p class="muted"><em>No description provided.</em></p>{{end}}</div>
+  </div>
+
+  {{range $d.Timeline}}
+    {{if .Comment}}{{template "pull-comment" (dict "C" .Comment "P" $p "U" $u)}}
+    {{else if .Thread}}{{template "thread" (dict "T" .Thread "P" $p "U" $u "Hunk" true)}}
+    {{else if .Review}}{{with .Review}}
+      <div class="tl-event" id="review-{{.ID}}">
+        {{if eq (print .State) "approved"}}<span class="tl-badge tl-ok">{{template "icon-check"}}</span><span><strong>{{.ReviewerName}}</strong> approved these changes</span>
+        {{else if eq (print .State) "changes_requested"}}<span class="tl-badge tl-bad">{{template "icon-file-diff"}}</span><span><strong>{{.ReviewerName}}</strong> requested changes</span>
+        {{else}}<span class="tl-badge">{{template "icon-comment"}}</span><span><strong>{{.ReviewerName}}</strong> reviewed</span>{{end}}
+        <span class="muted" title="{{datetime .CreatedAt}}">{{ago .CreatedAt}}</span>
+      </div>
+      {{if .Body}}<div class="box tl-comment tl-indent"><div class="markdown">{{markdown .Body}}</div></div>{{end}}
+    {{end}}
+    {{else if .Event}}{{with .Event}}
+      <div class="tl-event">
+        {{if eq .Kind "pushed"}}<span class="tl-badge">{{template "icon-commit"}}</span><span><strong>{{.ActorName}}</strong>
+          {{if index .Data "forced"}}force-pushed <code class="sha">{{shortsha (print (index .Data "from"))}}</code> → <a class="sha" href="/commit/{{index .Data "to"}}">{{shortsha (print (index .Data "to"))}}</a>
+          {{else}}pushed {{index .Data "count"}} commit{{if ne (print (index .Data "count")) "1"}}s{{end}} (<a class="sha" href="/commit/{{index .Data "to"}}">{{shortsha (print (index .Data "to"))}}</a>){{end}}</span>
+        {{else if eq .Kind "merged"}}<span class="tl-badge tl-merged">{{template "icon-merge"}}</span><span><strong>{{.ActorName}}</strong> merged commit <a class="sha" href="/commit/{{index .Data "sha"}}">{{shortsha (print (index .Data "sha"))}}</a> <span class="muted">({{index .Data "style"}})</span></span>
+        {{else if eq .Kind "closed"}}<span class="tl-badge tl-bad">{{template "icon-pr-closed"}}</span><span><strong>{{.ActorName}}</strong> closed this</span>
+        {{else if eq .Kind "reopened"}}<span class="tl-badge tl-ok">{{template "icon-pr"}}</span><span><strong>{{.ActorName}}</strong> reopened this</span>
+        {{else if eq .Kind "head_deleted"}}<span class="tl-badge">{{template "icon-branch"}}</span><span><strong>{{.ActorName}}</strong> deleted the head branch by pushing</span>
+        {{else if eq .Kind "branch_deleted"}}<span class="tl-badge">{{template "icon-branch"}}</span><span><strong>{{.ActorName}}</strong> deleted the <span class="branch-name">{{index .Data "branch"}}</span> branch</span>
+        {{else if eq .Kind "retitled"}}<span class="tl-badge">{{template "icon-comment"}}</span><span><strong>{{.ActorName}}</strong> changed the title <del>{{index .Data "from"}}</del> <strong>{{index .Data "to"}}</strong></span>
+        {{else}}<span class="tl-badge"></span><span><strong>{{.ActorName}}</strong> {{.Kind}}</span>{{end}}
+        <span class="muted" title="{{datetime .CreatedAt}}">{{ago .CreatedAt}}</span>
+      </div>
+    {{end}}{{end}}
+  {{end}}
+
+  {{if $p.IsOpen}}{{template "merge-box" .}}
+  {{else}}
+  <div class="box state-box {{if $p.IsMerged}}state-box-merged{{else}}state-box-closed{{end}}">
+    {{if $p.IsMerged}}{{template "icon-merge"}}<span><strong>{{$p.MergedByName}}</strong> merged {{with $p.MergeSHA}}commit <a class="sha" href="/commit/{{.}}">{{shortsha .}}</a> {{end}}into <span class="branch-name">{{$p.BaseBranch}}</span> <span class="muted" title="{{datetime $p.MergedAt}}">{{ago $p.MergedAt}}</span></span>
+    {{else}}{{template "icon-pr-closed"}}<span>Closed with unmerged commits <span class="muted" title="{{datetime $p.ClosedAt}}">{{ago $p.ClosedAt}}</span></span>{{end}}
+    <span class="spacer"></span>
+    {{if and $d.CanWrite $d.HeadAlive}}
+    <form method="post" action="/pulls/{{$p.ID}}/delete-branch"><button class="btn btn-sm" type="submit">Delete branch {{$p.HeadBranch}}</button></form>
+    {{end}}
+  </div>
+  {{end}}
+
+  {{if $u}}
+  <form method="post" action="/pulls/{{$p.ID}}/comments" class="box pad form comment-form">
+    <textarea name="body" rows="4" placeholder="Leave a comment (Markdown)"></textarea>
+    <div class="form-actions">
+      {{if or $d.CanWrite $d.IsAuthor}}{{if $p.IsOpen}}<button class="btn" type="submit" name="action" value="close">{{template "icon-pr-closed"}}Close pull request</button>
+      {{else if not $p.IsMerged}}<button class="btn" type="submit" name="action" value="reopen">Reopen pull request</button>{{end}}{{end}}
+      <button class="btn btn-primary" type="submit">Comment</button>
+    </div>
+  </form>
+  {{end}}
+</div>
+{{end}}
+
+{{define "merge-box"}}{{$d := .Data}}{{$p := $d.Pull}}{{$st := $d.Status}}
+<div class="box merge-box {{if $st.Mergeable}}merge-ok{{else}}merge-blocked{{end}}">
+  <div class="merge-section">
+    <div class="merge-line">
+      {{if and $st.Protection (lt $st.Approvals $st.Required)}}<span class="tl-badge tl-bad">{{template "icon-x"}}</span>{{else}}<span class="tl-badge tl-ok">{{template "icon-check"}}</span>{{end}}
+      <strong>{{if $st.Protection}}{{$st.Approvals}} of {{$st.Required}} required approval{{if ne $st.Required 1}}s{{end}}{{else}}{{$st.Approvals}} approval{{if ne $st.Approvals 1}}s{{end}}{{end}}</strong>
+      {{with $st.Protection}}<span class="muted small">{{template "icon-shield"}} {{$p.BaseBranch}} is protected by rule <code>{{.Pattern}}</code></span>{{end}}
+    </div>
+    {{range $st.Verdicts}}
+    <div class="merge-sub">{{avatar .Name .Email}} <strong>{{.Name}}</strong>
+      {{if eq (print .State) "approved"}}<span class="text-add">approved</span>{{if .Stale}} <span class="badge">stale</span>{{else if not .Counts}} <span class="muted small">(does not count)</span>{{end}}
+      {{else}}<span class="text-del">requested changes</span>{{end}}
+      <span class="muted small">{{ago .When}}</span></div>
+    {{end}}
+  </div>
+  {{if or $st.Checks $st.RequiredChecks}}
+  <div class="merge-section">
+    <div class="merge-line">
+      {{$bad := false}}{{$pending := false}}{{range $st.Checks}}{{if eq .State "pending"}}{{$pending = true}}{{else if not .OK}}{{$bad = true}}{{end}}{{end}}
+      {{if $bad}}<span class="tl-badge tl-bad">{{template "icon-x"}}</span><strong>Some checks failed</strong>
+      {{else if $pending}}<span class="tl-badge tl-pending">{{template "icon-dot"}}</span><strong>Checks are running</strong>
+      {{else}}<span class="tl-badge tl-ok">{{template "icon-check"}}</span><strong>All checks passed</strong>{{end}}
+    </div>
+    {{range $st.Checks}}
+    <div class="merge-sub">{{template "status-icon" .State}}<a href="{{.TargetURL}}"><strong>{{.Context}}</strong></a>
+      <span class="muted small">{{.Description}}</span>{{if inlist $st.RequiredChecks .Context}} <span class="badge">required</span>{{end}}</div>
+    {{end}}
+    {{range $st.RequiredChecks}}{{if not (hascheck $st.Checks .)}}<div class="merge-sub">{{template "status-icon" "pending"}}<strong>{{.}}</strong> <span class="muted small">expected — has not run</span> <span class="badge">required</span></div>{{end}}{{end}}
+  </div>
+  {{end}}
+  {{if $st.OwnerGroups}}
+  <div class="merge-section">
+    <div class="merge-line">
+      {{$ok := true}}{{range $st.OwnerGroups}}{{if not .Satisfied}}{{$ok = false}}{{end}}{{end}}
+      {{$required := and $st.Protection $st.Protection.RequireCodeOwnerReview}}
+      {{if $ok}}<span class="tl-badge tl-ok">{{template "icon-check"}}</span>{{else if $required}}<span class="tl-badge tl-bad">{{template "icon-x"}}</span>{{else}}<span class="tl-badge">{{template "icon-comment"}}</span>{{end}}
+      <strong>Code owners</strong>
+      <span class="muted small">{{if $st.CodeOwnersFile}}from <code>{{$st.CodeOwnersFile}}</code>{{if not $required}} · file owners not required{{end}}{{else}}from the branch protection rule{{end}}</span>
+    </div>
+    {{range $st.OwnerGroups}}
+    <details class="merge-sub owners">
+      <summary>{{if .Server}}<span class="badge" title="Server-side owners from the branch protection rule">rule</span> {{end}}<code>{{.Pattern}}</code> → {{range $i, $o := .Owners}}{{if $i}}, {{end}}{{$o}}{{end}}
+        {{if .ApprovedBy}}<span class="text-add">approved by {{range $i, $o := .ApprovedBy}}{{if $i}}, {{end}}{{$o}}{{end}}</span>{{else if .Resolvable}}<span class="muted">waiting for review</span>{{else}}<span class="muted">no known owners</span>{{end}}
+        <span class="muted small">({{len .Files}} file{{if ne (len .Files) 1}}s{{end}})</span></summary>
+      <ul class="mono small">{{range .Files}}<li>{{.}}</li>{{end}}</ul>
+    </details>
+    {{end}}
+  </div>
+  {{end}}
+  <div class="merge-section">
+    <div class="merge-line">
+      {{if $st.Conflicts}}<span class="tl-badge tl-bad">{{template "icon-x"}}</span><strong>This branch has conflicts that must be resolved</strong>
+      {{else if $st.BaseExists}}<span class="tl-badge tl-ok">{{template "icon-check"}}</span><strong>No conflicts with the base branch</strong>
+      {{else}}<span class="tl-badge tl-bad">{{template "icon-x"}}</span><strong>The base branch does not exist</strong>{{end}}
+    </div>
+    {{if $st.Conflicts}}
+    <div class="merge-sub muted small">Conflicting files:</div>
+    <ul class="mono small conflict-list">{{range $st.Conflicts}}<li>{{.}}</li>{{end}}</ul>
+    <div class="merge-sub muted small">Resolve locally: <code>git fetch origin && git checkout {{$p.HeadBranch}} && git merge origin/{{$p.BaseBranch}}</code>, fix the conflicts, commit and push.</div>
+    {{end}}
+  </div>
+  <div class="merge-section">
+    {{if not $st.Mergeable}}<ul class="blockers">{{range $st.Blockers}}<li>{{.}}</li>{{end}}</ul>{{end}}
+    {{if $d.CanWrite}}
+    <form method="post" action="/pulls/{{$p.ID}}/merge" class="form merge-form">
+      <div class="merge-controls">
+        <select name="style" onchange="mergeStyle(this)">
+          {{range $d.Styles}}<option value="{{.Style}}" data-title="{{.Title}}" data-body="{{.Body}}">{{if eq (print .Style) "squash"}}Squash and merge{{else if eq (print .Style) "merge"}}Create a merge commit{{else}}Rebase and merge{{end}}</option>{{end}}
+        </select>
+        <button class="btn btn-primary" type="submit" {{if not $st.Mergeable}}disabled{{end}}>{{template "icon-merge"}}Merge pull request</button>
+      </div>
+      {{with index $d.Styles 0}}
+      <div class="merge-msg">
+        <input name="title" value="{{.Title}}" aria-label="Commit title">
+        <textarea name="message" rows="4" aria-label="Commit message">{{.Body}}</textarea>
+      </div>
+      {{end}}
+      <label class="check"><input type="checkbox" name="delete_branch" checked> Delete <span class="branch-name">{{$p.HeadBranch}}</span> after merging</label>
+    </form>
+    {{else}}<div class="muted">Only users with write access can merge pull requests.</div>{{end}}
+  </div>
+</div>
+{{end}}
+
+{{/* pull-comment: dict "C" comment "P" pull "U" user */}}
+{{define "pull-comment"}}
+<div class="box tl-comment" id="comment-{{.C.ID}}">
+  <div class="box-header">
+    {{avatar .C.AuthorName .C.AuthorEmail}} <strong>{{.C.AuthorName}}</strong>
+    <a class="muted" href="#comment-{{.C.ID}}" title="{{datetime .C.CreatedAt}}">commented {{ago .C.CreatedAt}}</a>
+    <span class="spacer"></span>
+    {{if .C.CanDelete .U}}<form method="post" action="/pulls/{{.P.ID}}/comments/{{.C.ID}}/delete" onsubmit="return confirm('Delete this comment?')"><button class="linklike small" type="submit">Delete</button></form>{{end}}
+  </div>
+  <div class="markdown">{{markdown .C.Body}}</div>
+</div>
+{{end}}
+
+{{/* thread: dict "T" thread "P" pull "U" user "Hunk" bool (show file + context) */}}
+{{define "thread"}}{{$t := .T}}{{$p := .P}}{{$u := .U}}
+<div class="thread">
+  {{if .Hunk}}
+  <div class="thread-head"><span class="mono">{{$t.Path}}</span>{{if $t.Outdated}} <span class="badge">outdated</span>{{end}}</div>
+  {{with hunklines $t.DiffHunk}}<table class="diff snippet-diff"><tbody>{{range .}}<tr class="{{.Class}}"><td class="code"><span class="marker">{{.Marker}}</span>{{.Text}}</td></tr>{{end}}</tbody></table>{{end}}
+  {{end}}
+  {{range $t.Comments}}
+  <div class="thread-comment" id="comment-{{.ID}}">
+    <div class="thread-meta">{{avatar .AuthorName .AuthorEmail}} <strong>{{.AuthorName}}</strong> <a class="muted small" href="#comment-{{.ID}}" title="{{datetime .CreatedAt}}">{{ago .CreatedAt}}</a>
+      <span class="spacer"></span>
+      {{if .CanDelete $u}}<form method="post" action="/pulls/{{$p.ID}}/comments/{{.ID}}/delete" onsubmit="return confirm('Delete this comment?')"><button class="linklike small" type="submit">Delete</button></form>{{end}}
+    </div>
+    <div class="markdown">{{markdown .Body}}</div>
+  </div>
+  {{end}}
+  {{if and $u $p.IsOpen}}
+  <details class="thread-reply">
+    <summary class="muted">Reply…</summary>
+    <form method="post" action="/pulls/{{$p.ID}}/comments" class="form">
+      <input type="hidden" name="path" value="{{$t.Path}}"><input type="hidden" name="side" value="{{$t.Side}}">
+      <input type="hidden" name="line" value="{{$t.Line}}"><input type="hidden" name="commit" value="{{$t.CommitSHA}}">
+      <textarea name="body" rows="3" required placeholder="Reply (Markdown)"></textarea>
+      <div><button class="btn btn-primary btn-sm" type="submit">Reply</button></div>
+    </form>
+  </details>
+  {{end}}
+</div>
+{{end}}
+
+{{define "pull-commits"}}{{$d := .Data}}
+<div class="box">
+  {{range $d.Commits}}
+  <div class="commit-row">
+    {{avatar .Author.Name .Author.Email "lg"}}
+    <div class="commit-main">
+      <a class="subject" href="/commit/{{.SHA}}">{{.Subject}}</a>
+      <div class="muted"><strong>{{.Author.Name}}</strong> committed <span title="{{datetime .Committer.When}}">{{ago .Committer.When}}</span></div>
+    </div>
+    <div class="commit-actions">
+      <a class="btn btn-sm sha" href="/commit/{{.SHA}}">{{shortsha .SHA}}</a>
+      <a class="btn btn-sm" href="/tree/{{.SHA}}" title="Browse files at this commit">{{template "icon-code"}}</a>
+    </div>
+  </div>
+  {{else}}
+  <div class="blob-note">No commits.</div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "pull-files"}}{{$d := .Data}}{{$p := $d.Pull}}{{$u := .User}}{{$threads := $d.Threads}}{{$canComment := and $u $p.IsOpen}}
+{{with $d.Diff}}
+<div class="diffstat-summary">
+  Showing <strong>{{len .Files}} changed file{{if ne (len .Files) 1}}s{{end}}</strong>
+  with <span class="text-add">{{.Additions}} additions</span> and <span class="text-del">{{.Deletions}} deletions</span>.
+  {{if .Truncated}}<span class="muted">Diff is too large and was truncated.</span>{{end}}
+  {{if $canComment}}<span class="muted small">Click <strong>+</strong> next to a line number to comment.</span>{{end}}
+</div>
+{{range $i, $f := .Files}}
+<details class="difffile" id="diff-{{$i}}" open>
+  <summary class="difffile-header">
+    <span class="status status-{{$f.Status}}">{{$f.Status}}</span>
+    {{fileicon $f.Path}}<span class="path">{{if eq (print $f.Status) "renamed"}}{{$f.OldPath}} → {{end}}{{$f.Path}}</span>
+    <span class="stat"><span class="text-add">+{{$f.Additions}}</span> <span class="text-del">−{{$f.Deletions}}</span></span>
+  </summary>
+  {{if $f.Binary}}<div class="diff-note">Binary file not shown.</div>
+  {{else if $f.Truncated}}<div class="diff-note">Diff for this file is too large to display.</div>
+  {{else if not $f.Hunks}}<div class="diff-note">{{if $f.NewMode}}Mode changed {{$f.OldMode}} → {{$f.NewMode}}{{else}}No content changes.{{end}}</div>
+  {{else}}
+  <table class="diff"><tbody>
+  {{range $f.Hunks}}
+    <tr class="hunk"><td class="ln"></td><td class="ln"></td><td class="code">@@ -{{.OldStart}},{{.OldLines}} +{{.NewStart}},{{.NewLines}} @@ {{.Header}}</td></tr>
+    {{range .Lines}}
+    <tr class="{{lineclass .Kind}}">
+      <td class="ln">{{if .OldNo}}{{.OldNo}}{{end}}</td>
+      <td class="ln">{{if .NewNo}}{{.NewNo}}{{end}}{{if $canComment}}<button type="button" class="add-comment" title="Comment on this line" data-path="{{$f.Path}}" data-side="{{if eq (linechar .Kind) "-"}}old{{else}}new{{end}}" data-line="{{if eq (linechar .Kind) "-"}}{{.OldNo}}{{else}}{{.NewNo}}{{end}}" onclick="lineComment(this)">+</button>{{end}}</td>
+      <td class="code"><span class="marker">{{linechar .Kind}}</span>{{.Content}}{{if .NoEOL}} <span class="noeol" title="No newline at end of file">⏎̸</span>{{end}}</td>
+    </tr>
+    {{with threadsat $threads $f.Path .}}<tr class="thread-row"><td colspan="3">{{range .}}{{template "thread" (dict "T" . "P" $p "U" $u "Hunk" false)}}{{end}}</td></tr>{{end}}
+    {{end}}
+  {{end}}
+  </tbody></table>
+  {{end}}
+</details>
+{{end}}
+{{end}}
+{{if $canComment}}
+<template id="line-comment-tpl"><tr class="thread-row new-comment"><td colspan="3"><div class="thread">
+  <form method="post" action="/pulls/{{$p.ID}}/comments" class="form">
+    <input type="hidden" name="path"><input type="hidden" name="side"><input type="hidden" name="line">
+    <input type="hidden" name="commit" value="{{$p.HeadSHA}}">
+    <textarea name="body" rows="3" required placeholder="Leave a comment (Markdown)"></textarea>
+    <div><button class="btn btn-primary btn-sm" type="submit">Add comment</button> <button class="btn btn-sm" type="button" onclick="this.closest('tr').remove()">Cancel</button></div>
+  </form>
+</div></td></tr></template>
+{{end}}
+{{end}}
+
+{{define "pull-scripts"}}
+<script>
+function mergeStyle(sel){const o=sel.selectedOptions[0],f=sel.form.elements;f.title.value=o.dataset.title;f.message.value=o.dataset.body;sel.form.querySelector('.merge-msg').hidden=sel.value==='rebase'}
+function lineComment(btn){
+  const tr=btn.closest('tr'),next=tr.nextElementSibling;
+  if(next&&next.classList.contains('new-comment')){next.querySelector('textarea').focus();return}
+  const row=document.getElementById('line-comment-tpl').content.firstElementChild.cloneNode(true);
+  const f=row.querySelector('form').elements;
+  f.path.value=btn.dataset.path;f.side.value=btn.dataset.side;f.line.value=btn.dataset.line;
+  tr.after(row);f.body.focus();
+}
+</script>
+{{end}}

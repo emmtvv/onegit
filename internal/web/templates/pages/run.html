@@ -1,0 +1,32 @@
+{{define "content"}}{{$d := .Data}}{{$r := $d.Run}}
+<div class="run-header">
+  {{template "status-icon" $r.Status}}
+  <div>
+    <h2>{{$r.Name}} <span class="muted">#{{$r.ID}}</span></h2>
+    <div class="muted small">{{$r.Event}} · <span class="mono">{{refname $r.Ref}}</span> · <a class="sha" href="/commit/{{$r.SHA}}">{{shortsha $r.SHA}}</a>
+      {{if $r.PullID}}· <a href="/pulls/{{deint64 $r.PullID}}">PR #{{deint64 $r.PullID}}</a>{{end}}
+      {{if $r.DeploymentID}}· <a href="/deploy/{{deint64 $r.DeploymentID}}">deployment #{{deint64 $r.DeploymentID}}</a>{{end}}
+      · {{$r.TriggeredByName}} · <span title="{{datetime $r.CreatedAt}}">{{ago $r.CreatedAt}}</span>{{if $r.File}} · <code>{{$r.File}}</code>{{end}}</div>
+  </div>
+  <span class="spacer"></span>
+  {{if $d.CanWrite}}
+    {{if not $r.FinishedAt}}<form method="post" action="/actions/runs/{{$r.ID}}/cancel"><button class="btn btn-sm btn-danger" type="submit">Cancel</button></form>{{end}}
+    {{if and $r.FinishedAt (eq $r.Kind "pipeline")}}<form method="post" action="/actions/runs/{{$r.ID}}/rerun"><button class="btn btn-sm" type="submit">Re-run</button></form>{{end}}
+  {{end}}
+</div>
+<div class="box">
+  <table class="table">
+    <thead><tr><th>Job</th><th>Status</th><th>Runner</th><th>Duration</th><th></th></tr></thead>
+    <tbody>{{range $d.Jobs}}
+      <tr>
+        <td>{{template "status-icon" .Status}} <a href="/actions/jobs/{{.ID}}"><strong>{{.Name}}</strong></a>{{if .Needs}} <span class="muted small">needs {{join .Needs ", "}}</span>{{end}}</td>
+        <td>{{.Status}}</td>
+        <td class="muted">{{.RunnerName}}</td>
+        <td class="muted">{{dur .Duration}}</td>
+        <td class="muted small">{{.Message}}</td>
+      </tr>{{end}}
+    </tbody>
+  </table>
+</div>
+{{if $r.ChangedFiles}}<details class="box pad"><summary>{{len $r.ChangedFiles}} changed file{{if ne (len $r.ChangedFiles) 1}}s{{end}}</summary><ul class="mono small">{{range $r.ChangedFiles}}<li>{{.}}</li>{{end}}</ul></details>{{end}}
+{{end}}

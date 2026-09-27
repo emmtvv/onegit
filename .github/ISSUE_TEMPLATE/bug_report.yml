@@ -1,0 +1,43 @@
+name: Bug report
+description: Something does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! For security issues please use
+        [private reporting](https://github.com/emmtvv/onegit/security/advisories/new) instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Push a branch with ...
+        2. Open the pull request ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `onegit version`, or the image tag.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: How onegit runs (docker compose, Kubernetes, ...), the S3 provider, git client version, browser.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant server or runner log lines. Remove secrets.
+      render: text

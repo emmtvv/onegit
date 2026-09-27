@@ -1,0 +1,52 @@
+name: Release
+
+# Pushing a version tag (v1.2.3) runs the full CI, publishes the image to
+# Docker Hub (1.2.3, 1.2, 1 and latest; no major tag for 0.x) and creates a
+# GitHub Release. The release notes are the matching section of
+# CHANGELOG.md, so rename "Unreleased" to the version before tagging:
+#
+#   git tag -a v1.2.3 -m v1.2.3 && git push origin v1.2.3
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  image:
+    needs: ci
+    uses: ./.github/workflows/docker.yml
+    secrets: inherit
+
+  github-release:
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - id: changelog
+        uses: mindsers/changelog-reader-action@v2
+        with:
+          version: ${{ steps.version.outputs.version }}
+          path: ./CHANGELOG.md
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: |
+            ${{ steps.changelog.outputs.changes }}
+
+            **Image:** `docker pull ${{ vars.DOCKERHUB_IMAGE || 'emmtvv/onegit' }}:${{ steps.version.outputs.version }}`
+          prerelease: ${{ startsWith(github.ref_name, 'v0.') }}

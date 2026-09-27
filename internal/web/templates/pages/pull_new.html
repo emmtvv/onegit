@@ -1,0 +1,39 @@
+{{define "content"}}{{$d := .Data}}
+<h2>Open a pull request</h2>
+<form method="get" action="/pulls/new" class="box compare-bar">
+  {{template "icon-pr"}}
+  <label>base <select name="base" onchange="this.form.submit()">{{range $d.Branches}}<option {{if eq .Name $d.Base}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+  <span class="muted">←</span>
+  <label>compare <select name="head" onchange="this.form.submit()"><option value="">choose a branch…</option>{{range $d.Branches}}<option {{if eq .Name $d.Head}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+  <noscript><button class="btn btn-sm" type="submit">Compare</button></noscript>
+  {{if $d.Checked}}{{if $d.Conflicts}}<span class="text-del">{{template "icon-x"}}Can’t automatically merge. You can still open the pull request.</span>{{else}}<span class="text-add">{{template "icon-check"}}Able to merge.</span>{{end}}{{end}}
+</form>
+
+{{if not $d.Head}}
+  <div class="box blob-note">Choose a branch to compare with <strong>{{$d.Base}}</strong>.</div>
+{{else if eq $d.Head $d.Base}}
+  <div class="box blob-note">Choose two different branches.</div>
+{{else if $d.Invalid}}
+  <div class="box blob-note">One of the branches does not exist.</div>
+{{else if $d.Unrelated}}
+  <div class="box blob-note"><strong>{{$d.Head}}</strong> and <strong>{{$d.Base}}</strong> have entirely different histories.</div>
+{{else if not $d.Commits}}
+  <div class="box blob-note">There isn’t anything to compare: <strong>{{$d.Base}}</strong> is up to date with all commits from <strong>{{$d.Head}}</strong>.</div>
+{{else}}
+  {{with $d.Existing}}
+  <div class="flash">A pull request for these branches is already open: <a href="/pulls/{{.ID}}"><strong>#{{.ID}}</strong> {{.Title}}</a></div>
+  {{else}}
+  <form method="post" action="/pulls" class="box pad form">
+    <input type="hidden" name="base" value="{{$d.Base}}">
+    <input type="hidden" name="head" value="{{$d.Head}}">
+    <label>Title<input name="title" value="{{$d.Title}}" required autofocus></label>
+    <label>Description <span class="muted small">(Markdown)</span><textarea name="body" rows="8">{{$d.Body}}</textarea></label>
+    <div><button class="btn btn-primary" type="submit">Create pull request</button></div>
+  </form>
+  {{end}}
+
+  <h3 class="group-title">{{template "icon-commit"}}{{len $d.Commits}} commit{{if ne (len $d.Commits) 1}}s{{end}}</h3>
+  <div class="box">{{range $d.Commits}}<div class="commit-row">{{template "commitline" .}}</div>{{end}}</div>
+  {{template "diff" $d.Diff}}
+{{end}}
+{{end}}

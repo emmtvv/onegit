@@ -1,0 +1,31 @@
+{{define "content"}}{{$d := .Data}}
+<nav class="breadcrumbs"><a href="/deploy">Deployments</a><span class="sep">/</span><strong>New deployment</strong></nav>
+{{if not $d.Dims}}
+<div class="box blob-note">No deploy targets are configured yet.</div>
+{{else}}
+<form method="post" action="/deploy" class="form deploy-form">
+  <div class="box pad">
+    <div class="deploy-dims">
+    {{range $d.Dims}}{{$vals := index $d.Values .Name}}{{$sel := index $d.Selected .Name}}
+      <fieldset>
+        <legend>{{.Name}} <button type="button" class="btn btn-sm btn-link" onclick="toggleAll(this)">all</button></legend>
+        <div class="choices">
+        {{$dim := .Name}}{{range $vals}}<label class="check"><input type="checkbox" name="{{$dim}}" value="{{.}}" {{if inlist $sel .}}checked{{end}}> <span class="mono">{{.}}</span></label>{{else}}<span class="muted small">no values found</span>{{end}}
+        </div>
+      </fieldset>
+    {{end}}
+    </div>
+    <label>Branch, tag or commit<input name="ref" value="{{$d.Ref}}" class="mono" required></label>
+    <label>Comment <span class="muted small">(optional)</span><input name="comment" value="{{$d.Comment}}"></label>
+    <div class="form-actions">
+      <button class="btn" type="submit" formmethod="get" formaction="/deploy/new" name="check" value="1">Check</button>
+      <button class="btn btn-primary" type="submit">{{template "icon-rocket"}}Request deployment</button>
+    </div>
+  </div>
+</form>
+{{with $d.Eval}}{{template "evaluation" .}}{{end}}
+{{end}}
+<script>
+function toggleAll(btn){const boxes=btn.closest('fieldset').querySelectorAll('input[type=checkbox]');const on=[...boxes].some(b=>!b.checked);boxes.forEach(b=>b.checked=on)}
+</script>
+{{end}}

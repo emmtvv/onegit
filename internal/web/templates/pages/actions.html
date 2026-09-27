@@ -1,0 +1,34 @@
+{{define "content"}}{{$d := .Data}}
+<div class="toolbar">
+  <div class="btn-group">
+    <a class="btn {{if eq $d.Kind "pipeline"}}active{{end}}" href="/actions">Pipelines</a>
+    <a class="btn {{if eq $d.Kind "deploy"}}active{{end}}" href="/actions?kind=deploy">Deploy runs</a>
+  </div>
+  <span class="spacer"></span>
+  {{if and $d.CanWrite $d.Manual}}
+  <form method="post" action="/actions/run" class="inline-form">
+    <select name="file">{{range $d.Manual}}<option value="{{.}}">{{.}}</option>{{end}}</select>
+    <input name="branch" value="{{$d.Branch}}" class="mono" size="14" aria-label="Branch">
+    <button class="btn btn-sm btn-primary" type="submit">{{template "icon-play"}}Run pipeline</button>
+  </form>
+  {{end}}
+</div>
+<div class="box">
+{{range $d.Runs}}
+  <div class="run-row">
+    {{template "status-icon" .Status}}
+    <div class="run-main">
+      <a href="/actions/runs/{{.ID}}"><strong>{{.Name}}</strong></a> <span class="muted">#{{.ID}}</span>
+      <div class="muted small">{{.Event}} · <span class="mono">{{refname .Ref}}</span> · <a class="sha" href="/commit/{{.SHA}}">{{shortsha .SHA}}</a> · {{.TriggeredByName}} · <span title="{{datetime .CreatedAt}}">{{ago .CreatedAt}}</span></div>
+    </div>
+    <div class="run-jobs">{{range .Jobs}}<a href="/actions/jobs/{{.ID}}" title="{{.Name}}: {{.Status}}">{{template "status-icon" .Status}}</a>{{end}}</div>
+  </div>
+{{else}}
+  <div class="blob-note">{{if eq $d.Kind "deploy"}}No deployments have run yet. Start one from <a href="/deploy">Deployments</a>.{{else}}No pipeline runs yet. Add a pipeline in <code>.onegit/pipelines/</code> and push.{{end}}</div>
+{{end}}
+</div>
+<div class="pager">
+  {{if gt $d.Page 1}}<a class="btn" href="?kind={{$d.Kind}}&page={{sub $d.Page 1}}">Newer</a>{{end}}
+  {{if $d.HasNext}}<a class="btn" href="?kind={{$d.Kind}}&page={{add $d.Page 1}}">Older</a>{{end}}
+</div>
+{{end}}

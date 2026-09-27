@@ -1,0 +1,29 @@
+{{define "content"}}{{$d := .Data}}
+{{with $d.Default}}
+<h3 class="group-title">Default branch</h3>
+<div class="box">
+  <div class="branch-row">
+    <a class="branch-name" href="/tree/{{pathesc .Name}}">{{.Name}}</a>
+    <span class="muted">Updated <span title="{{datetime .When}}">{{ago .When}}</span> by {{.Author}}</span>
+    <span class="spacer"></span>
+    <span class="badge">default</span>
+  </div>
+</div>
+{{end}}
+<h3 class="group-title">Branches</h3>
+<div class="box">
+  {{range $d.Branches}}
+  <div class="branch-row">
+    <a class="branch-name" href="/tree/{{pathesc .Name}}">{{.Name}}</a>
+    <span class="muted">Updated <span title="{{datetime .When}}">{{ago .When}}</span> by {{.Author}}</span>
+    <span class="spacer"></span>
+    <span class="aheadbehind" title="{{.Behind}} behind, {{.Ahead}} ahead of default"><span class="behind">{{.Behind}}</span><span class="ahead">{{.Ahead}}</span></span>
+    {{if .Pull}}<a class="btn btn-sm" href="/pulls/{{.Pull.ID}}" title="{{.Pull.Title}}">{{template "icon-pr"}}#{{.Pull.ID}}</a>
+    {{else if and $.User $.User.CanWrite (gt .Ahead 0)}}<a class="btn btn-sm" href="/pulls/new?head={{queryesc .Name}}">New pull request</a>{{end}}
+    <a class="btn btn-sm" href="/commits/{{pathesc .Name}}">{{template "icon-history"}}</a>
+  </div>
+  {{else}}
+  <div class="blob-note">No other branches.</div>
+  {{end}}
+</div>
+{{end}}

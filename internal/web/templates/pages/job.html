@@ -1,0 +1,74 @@
+{{define "content"}}{{$d := .Data}}{{$r := $d.Run}}{{$j := $d.Job}}
+<nav class="breadcrumbs">{{if $r.DeploymentID}}<a href="/deploy">Deployments</a><span class="sep">/</span><a href="/deploy/{{deint64 $r.DeploymentID}}">#{{deint64 $r.DeploymentID}}</a>{{else}}<a href="/actions">Actions</a><span class="sep">/</span><a href="/actions/runs/{{$r.ID}}">{{$r.Name}} #{{$r.ID}}</a>{{end}}<span class="sep">/</span><strong>{{$j.Name}}</strong></nav>
+<div class="with-sidenav job-layout">
+  <nav class="sidenav">
+    {{range $d.Jobs}}<a class="{{if eq .ID $j.ID}}active{{end}}" href="/actions/jobs/{{.ID}}">{{template "status-icon" .Status}} {{.Name}}</a>{{end}}
+  </nav>
+  <div class="job-main">
+    <div class="run-header">
+      <span id="job-icon">{{template "status-icon" $j.Status}}</span>
+      <div>
+        <h2>{{$j.Name}}</h2>
+        <div class="muted small"><span id="job-status">{{$j.Status}}</span>{{if $j.RunnerName}} on {{$j.RunnerName}}{{end}} · <a class="sha" href="/commit/{{$r.SHA}}">{{shortsha $r.SHA}}</a> <span id="job-duration">{{dur $j.Duration}}</span>
+          {{if eq $j.Kind "deploy"}} · recipe <code>{{$d.Spec.RecipeFile}}</code> @ <a class="sha" href="/tree/{{$d.Spec.RecipeSHA}}/.onegit/deploy">{{shortsha $d.Spec.RecipeSHA}}</a>{{end}}</div>
+        <div class="muted small" id="job-message">{{$j.Message}}</div>
+      </div>
+      <span class="spacer"></span>
+      <a class="btn btn-sm" href="/actions/jobs/{{$j.ID}}/raw">Raw log</a>
+      {{if and $d.CanWrite (not $r.FinishedAt) (not $r.DeploymentID)}}<form method="post" action="/actions/runs/{{$r.ID}}/cancel"><button class="btn btn-sm btn-danger" type="submit">Cancel run</button></form>{{end}}
+    </div>
+    <ul class="job-steps" id="steps">{{range $j.Steps}}<li class="step-{{.Status}}">{{template "status-icon" .Status}} {{.Name}}</li>{{end}}</ul>
+    <pre class="job-log" id="log" data-job="{{$j.ID}}"></pre>
+  </div>
+</div>
+<template id="icons">
+  <span data-s="success">{{template "status-icon" "success"}}</span><span data-s="failure">{{template "status-icon" "failure"}}</span>
+  <span data-s="skipped">{{template "status-icon" "skipped"}}</span><span data-s="cancelled">{{template "status-icon" "cancelled"}}</span>
+  <span data-s="running">{{template "status-icon" "running"}}</span><span data-s="pending">{{template "status-icon" "pending"}}</span>
+</template>
+<script>
+(function(){
+  const pre = document.getElementById('log'), id = pre.dataset.job, icons = document.getElementById('icons').content;
+  const icon = s => { const e = icons.querySelector('[data-s="'+s+'"]') || icons.querySelector('[data-s="pending"]'); return e.innerHTML; };
+  let after = -1, carry = '';
+  const ansi = /\x1b\[[0-9;?]*[A-Za-z]/g;
+  function addLine(line) {
+    const cr = line.lastIndexOf('\r');
+    if (cr >= 0 && cr < line.length - 1) line = line.slice(cr + 1); else line = line.replace(/\r$/, '');
+    line = line.replace(ansi, '');
+    const div = document.createElement('div');
+    if (!pre.firstChild && line === '') return;
+    if (line.startsWith('##[step] ')) { div.className = 'log-step'; div.textContent = line.slice(9); }
+    else { div.className = 'log-line'; div.textContent = line; }
+    pre.appendChild(div);
+  }
+  function append(text) {
+    const lines = (carry + text).split('\n');
+    carry = lines.pop();
+    lines.forEach(addLine);
+  }
+  async function poll() {
+    let done = false;
+    try {
+      const pinned = window.innerHeight + window.scrollY >= document.body.scrollHeight - 40;
+      const res = await fetch('/actions/jobs/' + id + '/log?after=' + after, {cache: 'no-store'});
+      const j = await res.json();
+      j.chunks.forEach(c => { append(c.data); after = c.seq; });
+      done = j.done;
+      if (done && carry) { addLine(carry); carry = ''; }
+      document.getElementById('job-status').textContent = j.status;
+      document.getElementById('job-icon').innerHTML = icon(j.status);
+      document.getElementById('job-duration').textContent = j.duration === '0s' ? '' : j.duration;
+      document.getElementById('job-message').textContent = j.message;
+      if (j.steps && j.steps.length) {
+        const ul = document.getElementById('steps'); ul.innerHTML = '';
+        j.steps.forEach(s => { const li = document.createElement('li'); li.className = 'step-' + s.status; li.innerHTML = icon(s.status) + ' '; li.appendChild(document.createTextNode(s.name)); ul.appendChild(li); });
+      }
+      if (pinned && j.chunks.length) window.scrollTo(0, document.body.scrollHeight);
+    } catch (e) {}
+    if (!done) setTimeout(poll, 2000);
+  }
+  poll();
+})();
+</script>
+{{end}}

@@ -1,0 +1,108 @@
+# Full onegit stack: app + Postgres + Redis + S3 (SeaweedFS).
+# Usage: cp .env.example .env && edit .env && docker compose up -d
+# (add --build to build the image from this checkout instead of pulling it).
+
+name: onegit
+
+services:
+  onegit:
+    build: .
+    image: ${ONEGIT_IMAGE:-emmtvv/onegit:latest}
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      s3: { condition: service_healthy }
+    ports:
+      - "${ONEGIT_HTTP_PORT:-3000}:3000"
+    environment:
+      ONEGIT_BASE_URL: ${ONEGIT_BASE_URL:-http://localhost:3000}
+      ONEGIT_REPO_NAME: ${ONEGIT_REPO_NAME:-monorepo}
+      ONEGIT_PUBLIC_READ: ${ONEGIT_PUBLIC_READ:-false}
+      ONEGIT_TRUST_PROXY: ${ONEGIT_TRUST_PROXY:-false}
+      ONEGIT_ADMIN_USERNAME: ${ONEGIT_ADMIN_USERNAME:-admin}
+      ONEGIT_ADMIN_EMAIL: ${ONEGIT_ADMIN_EMAIL:-}
+      ONEGIT_ADMIN_PASSWORD: ${ONEGIT_ADMIN_PASSWORD:?set ONEGIT_ADMIN_PASSWORD in .env}
+      ONEGIT_DATABASE_HOST: ${POSTGRES_HOST:-postgres}
+      ONEGIT_DATABASE_PORT: ${POSTGRES_PORT:-5432}
+      ONEGIT_DATABASE_USER: ${POSTGRES_USER:-onegit}
+      ONEGIT_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      ONEGIT_DATABASE_NAME: ${POSTGRES_DB:-onegit}
+      ONEGIT_DATABASE_SSL_MODE: ${POSTGRES_SSL_MODE:-disable}
+      ONEGIT_REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379/0
+      ONEGIT_S3_ENDPOINT: http://s3:8333
+      ONEGIT_S3_BUCKET: onegit
+      ONEGIT_S3_ACCESS_KEY: ${S3_ACCESS_KEY:-onegit}
+      ONEGIT_S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY}
+      ONEGIT_REGISTRY_ENABLED: ${ONEGIT_REGISTRY_ENABLED:-true}
+      ONEGIT_REGISTRY_MAX_BLOB_SIZE: ${ONEGIT_REGISTRY_MAX_BLOB_SIZE:-}
+      ONEGIT_REGISTRY_MAX_TOTAL_SIZE: ${ONEGIT_REGISTRY_MAX_TOTAL_SIZE:-}
+      ONEGIT_SECRET_KEY: ${ONEGIT_SECRET_KEY:-}
+      ONEGIT_OIDC_ENABLED: ${ONEGIT_OIDC_ENABLED:-false}
+      ONEGIT_OIDC_DISPLAY_NAME: ${ONEGIT_OIDC_DISPLAY_NAME:-SSO}
+      ONEGIT_OIDC_ISSUER: ${ONEGIT_OIDC_ISSUER:-}
+      ONEGIT_OIDC_CLIENT_ID: ${ONEGIT_OIDC_CLIENT_ID:-}
+      ONEGIT_OIDC_CLIENT_SECRET: ${ONEGIT_OIDC_CLIENT_SECRET:-}
+      ONEGIT_OIDC_ADMIN_GROUP: ${ONEGIT_OIDC_ADMIN_GROUP:-}
+      ONEGIT_OIDC_WRITE_GROUP: ${ONEGIT_OIDC_WRITE_GROUP:-}
+    volumes:
+      - repo:/data/repo
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-onegit}
+      POSTGRES_USER: ${POSTGRES_USER:-onegit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+  # S3-compatible storage. Any S3 works (AWS, R2, MinIO, ...); SeaweedFS is
+  # used here because it is a single open-source container.
+  s3:
+    image: chrislusf/seaweedfs:latest
+    restart: unless-stopped
+    command: ["server", "-dir=/data", "-s3", "-s3.port=8333", "-s3.config=/etc/seaweedfs/s3.json"]
+    configs:
+      - source: s3_identities
+        target: /etc/seaweedfs/s3.json
+    volumes:
+      - s3:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8333/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+configs:
+  s3_identities:
+    content: |
+      {"identities": [{"name": "onegit",
+        "credentials": [{"accessKey": "${S3_ACCESS_KEY:-onegit}", "secretKey": "${S3_SECRET_KEY:?set S3_SECRET_KEY}"}],
+        "actions": ["Admin", "Read", "Write", "List", "Tagging"]}]}
+
+volumes:
+  repo:
+  postgres:
+  redis:
+  s3:

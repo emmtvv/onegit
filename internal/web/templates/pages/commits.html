@@ -1,0 +1,30 @@
+{{define "content"}}{{$d := .Data}}{{$ref := $d.Ref.Name}}
+<div class="toolbar">
+  {{template "refpicker" (dict "Ref" $d.Ref "Path" $d.Path "Kind" "commits" "Branches" $d.Branches "Tags" $d.Tags)}}
+  {{if $d.Path}}<span class="muted">History for</span> {{template "breadcrumbs" (dict "Ref" $ref "Path" $d.Path "Repo" .Cfg.Repo.Name)}}{{end}}
+</div>
+{{range $d.Groups}}
+<h3 class="group-title">{{template "icon-commit"}}Commits on {{.Day}}</h3>
+<div class="box">
+  {{range .Commits}}
+  <div class="commit-row">
+    {{avatar .Author.Name .Author.Email "lg"}}
+    <div class="commit-main">
+      <a class="subject" href="/commit/{{.SHA}}">{{.Subject}}</a>
+      <div class="muted"><strong>{{.Author.Name}}</strong> committed <span title="{{datetime .Committer.When}}">{{ago .Committer.When}}</span></div>
+    </div>
+    <div class="commit-actions">
+      <a class="btn btn-sm sha" href="/commit/{{.SHA}}">{{shortsha .SHA}}</a>
+      <a class="btn btn-sm" href="/tree/{{.SHA}}" title="Browse files at this commit">{{template "icon-code"}}</a>
+    </div>
+  </div>
+  {{end}}
+</div>
+{{else}}
+<div class="box blob-note">No commits found.</div>
+{{end}}
+<div class="pager">
+  {{if gt $d.Page 1}}<a class="btn" href="?page={{sub $d.Page 1}}">Newer</a>{{end}}
+  {{if $d.HasNext}}<a class="btn" href="?page={{add $d.Page 1}}">Older</a>{{end}}
+</div>
+{{end}}

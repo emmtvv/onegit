@@ -1,0 +1,15 @@
+{{define "content"}}
+<div class="box">
+  {{range .Data.Tags}}
+  <div class="branch-row">
+    {{template "icon-tag"}}<a class="branch-name" href="/tree/{{pathesc .Name}}">{{.Name}}</a>
+    <span class="muted">{{.Subject}}</span>
+    <span class="spacer"></span>
+    <span class="muted" title="{{datetime .When}}">{{ago .When}}</span>
+    <a class="btn btn-sm sha" href="/commit/{{.SHA}}">{{shortsha .SHA}}</a>
+  </div>
+  {{else}}
+  <div class="blob-note">No tags yet.</div>
+  {{end}}
+</div>
+{{end}}

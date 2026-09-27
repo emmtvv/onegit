@@ -1,0 +1,31 @@
+{{define "content"}}{{$d := .Data}}{{$ref := $d.Ref.Name}}
+<div class="toolbar">
+  {{template "breadcrumbs" (dict "Ref" $ref "Path" $d.Path "Repo" .Cfg.Repo.Name)}}
+  <span class="spacer"></span>
+  <a class="btn btn-sm" href="/commits/{{pathesc $ref $d.Path}}">{{template "icon-history"}}History</a>
+</div>
+<div class="box">
+  {{with $d.Commit}}<div class="box-header">{{template "commitline" .}}</div>{{end}}
+  <div class="box-header file-header">
+    {{fileicon $d.Path}}<span class="muted">{{with $d.Lines}}{{.}} lines · {{end}}{{bytes $d.Size}}</span>
+    <span class="spacer"></span>
+    {{if $d.IsMarkdown}}
+      <div class="btn-group">
+        <a class="btn btn-sm {{if $d.Markdown}}active{{end}}" href="?">Preview</a>
+        <a class="btn btn-sm {{if not $d.Markdown}}active{{end}}" href="?plain=1">Code</a>
+      </div>
+    {{end}}
+    <a class="btn btn-sm" href="/raw/{{pathesc $ref $d.Path}}">Raw</a>
+    <a class="btn btn-sm" href="/raw/{{pathesc $ref $d.Path}}?download=1">Download</a>
+  </div>
+  {{if $d.Image}}<div class="blob-image"><img src="/raw/{{pathesc $ref $d.Path}}" alt="{{$d.Name}}"></div>
+  {{else if $d.TooLarge}}<div class="blob-note">This file is too large to display. <a href="/raw/{{pathesc $ref $d.Path}}">View raw</a></div>
+  {{else if $d.Binary}}<div class="blob-note">Binary file not shown. <a href="/raw/{{pathesc $ref $d.Path}}?download=1">Download</a></div>
+  {{else if $d.Markdown}}<div class="markdown">{{$d.Markdown}}</div>
+  {{else}}<div class="blob-code">{{$d.Code}}</div>{{end}}
+</div>
+<script>
+// Highlight the line referenced by #L<n>.
+(function(){function h(){document.querySelectorAll('.line-hl').forEach(e=>e.classList.remove('line-hl'));const m=location.hash.match(/^#L(\d+)$/);if(!m)return;const a=document.getElementById('L'+m[1]);if(!a)return;const rows=document.querySelectorAll('.blob-code .lntd:last-child .line');const r=rows[+m[1]-1];if(r)r.classList.add('line-hl')}window.addEventListener('hashchange',h);h()})();
+</script>
+{{end}}

@@ -1,0 +1,78 @@
+{{define "content"}}{{template "admin-nav" "deploy"}}{{$d := .Data}}
+<p class="muted">A deployment sends one commit to one or more <strong>targets</strong>; a target has a value for every dimension. <strong>Grants</strong> say who may request a deployment (any matching grant is enough). <strong>Requirements</strong> say under which conditions (every matching requirement applies, so adding one can only make things stricter). Nothing is allowed until a grant exists. How to deploy is defined by recipes in <code>.onegit/deploy/</code> on the default branch.</p>
+
+<div class="box" id="dimensions">
+  <div class="box-header"><strong>Dimensions</strong></div>
+  <table class="table">
+    <thead><tr><th>Name</th><th>Values</th><th></th></tr></thead>
+    <tbody>{{range $d.Dims}}
+      <tr><td class="mono"><strong>{{.Name}}</strong><div class="muted small">env ${{upper .Name}}</div></td>
+        <td>{{if eq .Source "paths"}}<span class="muted small">from <code>{{.PathPattern}}</code>:</span> {{end}}{{range index $d.Values .Name}}<span class="label mono">{{.}}</span> {{else}}<span class="muted small">none found</span>{{end}}</td>
+        <td class="right"><form method="post" action="/admin/deploy/dimensions/{{.Name}}/delete" onsubmit="return confirm('Delete dimension {{.Name}}?')"><button class="btn btn-sm btn-danger" type="submit">Delete</button></form></td></tr>
+    {{end}}</tbody>
+  </table>
+  <form method="post" action="/admin/deploy/dimensions" class="pad form dim-form">
+    <div class="inline-form">
+      <input name="name" placeholder="name, e.g. environment" required class="mono" size="18">
+      <select name="source" onchange="this.form.dataset.src=this.value"><option value="list">fixed list</option><option value="paths">directories in the repo</option></select>
+      <input name="values" placeholder="development, production" class="mono src-list" size="26">
+      <input name="path_pattern" placeholder="projects/*/project.yaml" class="mono src-paths" size="26">
+      <input name="position" type="number" value="{{len $d.Dims}}" size="3" title="order" style="width:4em">
+      <button class="btn btn-sm btn-primary" type="submit">Save dimension</button>
+    </div>
+    <p class="muted small">Saving an existing name replaces it. A path pattern has one <code>*</code> segment: every directory that contains the rest of the pattern on the default branch becomes a value.</p>
+  </form>
+</div>
+
+<div class="box" id="grants">
+  <div class="box-header"><strong>Grants — who may deploy</strong></div>
+  {{range $d.Grants}}
+  <form method="post" action="/admin/deploy/rules/{{.ID}}" class="rule-row form">
+    <input name="description" value="{{.Description}}" placeholder="description">
+    <label>Targets<input name="selector" value="{{.SelectorText}}" class="mono" placeholder="all targets"></label>
+    <label>Who<input name="principals" value="{{.PrincipalsText}}" class="mono" required></label>
+    <div class="rule-actions"><button class="btn btn-sm" type="submit">Save</button>
+      <button class="btn btn-sm btn-danger" type="submit" formaction="/admin/deploy/rules/{{.ID}}/delete" onclick="return confirm('Delete this grant?')">Delete</button></div>
+  </form>
+  {{else}}<div class="blob-note">No grants: nobody can deploy.</div>{{end}}
+  <form method="post" action="/admin/deploy/rules" class="rule-row form rule-new">
+    <input type="hidden" name="kind" value="grant">
+    <input name="description" placeholder="description, e.g. developers deploy to development">
+    <label>Targets<input name="selector" class="mono" placeholder="environment=development"></label>
+    <label>Who<input name="principals" class="mono" placeholder="team:developers, codeowners, role:admin" required></label>
+    <div class="rule-actions"><button class="btn btn-sm btn-primary" type="submit">Add grant</button></div>
+  </form>
+</div>
+
+<div class="box" id="requires">
+  <div class="box-header"><strong>Requirements — under which conditions</strong></div>
+  {{range $d.Reqs}}{{template "require-form" (dict "R" . "Action" (print "/admin/deploy/rules/" .ID) "ID" .ID)}}{{else}}<div class="blob-note">No requirements.</div>{{end}}
+  {{template "require-form" (dict "R" nil "Action" "/admin/deploy/rules" "ID" 0)}}
+</div>
+<p class="muted small">Principals: <code>user:NAME</code>, <code>team:NAME</code>, <code>role:read|write|admin</code>, <code>codeowners</code> (the CODEOWNERS owners of the target's directory on the default branch). Targets: <code>dimension=glob,glob; dimension=…</code>. Every change is recorded in the <a href="/admin/audit">audit log</a>.</p>
+{{end}}
+
+{{define "require-form"}}{{$r := .R}}
+<form method="post" action="{{.Action}}" class="rule-row form {{if not $r}}rule-new{{end}}">
+  <input type="hidden" name="kind" value="require">
+  <input name="description" value="{{if $r}}{{$r.Description}}{{end}}" placeholder="description, e.g. production safety">
+  <label>Targets<input name="selector" value="{{if $r}}{{$r.SelectorText}}{{end}}" class="mono" placeholder="environment=production"></label>
+  <label>Commit must be on branch <span class="muted small">(comma-separated globs; empty = any)</span><input name="branches" value="{{if $r}}{{join $r.Branches ", "}}{{end}}" class="mono" placeholder="main"></label>
+  <label>Does not apply to commits already on <span class="muted small">(e.g. <code>main</code>: “approve unreviewed code only”)</span><input name="except_branches" value="{{if $r}}{{join $r.ExceptBranches ", "}}{{end}}" class="mono"></label>
+  <div class="inline-form">
+    <label class="check"><input type="checkbox" name="require_checks" {{if and $r $r.RequireChecks}}checked{{end}}> all checks passed</label>
+    <label class="check"><input type="checkbox" name="require_ci_artifact" {{if and $r $r.RequireCIArtifact}}checked{{end}}> image built by CI from this commit</label>
+  </div>
+  <div class="inline-form">
+    <label class="inline">Approvals <input type="number" name="approvals" min="0" max="10" value="{{if $r}}{{$r.Approvals}}{{else}}0{{end}}" style="width:4em"></label>
+    <label class="inline">from <input name="approvers" value="{{if $r}}{{$r.ApproversText}}{{end}}" class="mono" placeholder="team:sre (empty = any writer)" size="28"></label>
+    <label class="check"><input type="checkbox" name="allow_author_approval" {{if and $r $r.AllowAuthorApproval}}checked{{end}}> commit author may approve</label>
+  </div>
+  <div class="inline-form">
+    <label class="check"><input type="checkbox" name="freeze" {{if and $r $r.Freeze}}checked{{end}}> <strong>freeze</strong> (block all deployments)</label>
+    <input name="freeze_message" value="{{if $r}}{{$r.FreezeMessage}}{{end}}" placeholder="reason" size="30">
+  </div>
+  <div class="rule-actions">{{if $r}}<button class="btn btn-sm" type="submit">Save</button>
+    <button class="btn btn-sm btn-danger" type="submit" formaction="/admin/deploy/rules/{{.ID}}/delete" onclick="return confirm('Delete this requirement?')">Delete</button>{{else}}<button class="btn btn-sm btn-primary" type="submit">Add requirement</button>{{end}}</div>
+</form>
+{{end}}

@@ -1,0 +1,26 @@
+{{define "content"}}
+<div class="with-sidenav">
+  {{template "settings-nav" "profile"}}
+  <div class="grow">
+    <div class="box pad">
+      <h2>Profile</h2>
+      <dl class="props">
+        <dt>Username</dt><dd>{{.User.Username}}</dd>
+        <dt>Name</dt><dd>{{or .User.FullName "—"}}</dd>
+        <dt>Email</dt><dd>{{or .User.Email "—"}}</dd>
+        <dt>Role</dt><dd><span class="badge">{{.User.Role}}</span></dd>
+        <dt>Sign-in</dt><dd>{{if .User.HasSSO}}{{.Cfg.OIDC.DisplayName}}{{if .User.PasswordHash}} and password{{end}}{{else}}Password{{end}}</dd>
+      </dl>
+    </div>
+    <div class="box pad">
+      <h2>{{if .User.PasswordHash}}Change password{{else}}Set a password{{end}}</h2>
+      {{if not .User.PasswordHash}}<p class="muted">You sign in with {{.Cfg.OIDC.DisplayName}}. For git over HTTPS, an <a href="/settings/tokens">access token</a> is usually a better choice than a password.</p>{{end}}
+      <form method="post" action="/settings/password" class="form narrow">
+        {{if .User.PasswordHash}}<label>Current password<input type="password" name="current" autocomplete="current-password" required></label>{{end}}
+        <label>New password<input type="password" name="new" autocomplete="new-password" minlength="10" required></label>
+        <button class="btn" type="submit">Update password</button>
+      </form>
+    </div>
+  </div>
+</div>
+{{end}}

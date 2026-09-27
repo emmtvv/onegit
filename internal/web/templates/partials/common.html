@@ -1,0 +1,136 @@
+{{/* refpicker: dict "Ref" git.Ref "Path" string "Kind" "tree|commits" "Branches" []Ref "Tags" []Ref */}}
+{{define "refpicker"}}
+<details class="dropdown refpicker">
+  <summary class="btn btn-sm">{{if eq .Ref.Kind 1}}{{template "icon-tag"}}{{else if eq .Ref.Kind 2}}{{template "icon-commit"}}{{else}}{{template "icon-branch"}}{{end}}<span class="ref-name">{{if eq .Ref.Kind 2}}{{shortsha .Ref.Name}}{{else}}{{.Ref.Name}}{{end}}</span><span class="caret"></span></summary>
+  <div class="menu refmenu">
+    <input class="menu-filter" type="search" placeholder="Filter branches and tags…" oninput="filterMenu(this)" autofocus>
+    <div class="menu-section">Branches</div>
+    {{$kind := .Kind}}{{$path := .Path}}{{$cur := .Ref.Name}}
+    {{range .Branches}}<a class="{{if eq .Name $cur}}selected{{end}}" data-name="{{.Name}}" href="/{{$kind}}/{{pathesc .Name $path}}">{{.Name}}</a>{{end}}
+    {{if .Tags}}<div class="menu-section">Tags</div>
+    {{range .Tags}}<a class="{{if eq .Name $cur}}selected{{end}}" data-name="{{.Name}}" href="/{{$kind}}/{{pathesc .Name $path}}">{{.Name}}</a>{{end}}{{end}}
+  </div>
+</details>
+{{end}}
+
+{{/* breadcrumbs: dict "Ref" string "Path" string */}}
+{{define "breadcrumbs"}}
+<nav class="breadcrumbs">
+  <a href="/tree/{{pathesc .Ref}}"><strong>{{.Repo}}</strong></a>
+  {{$ref := .Ref}}
+  {{range crumbs .Path}}<span class="sep">/</span>{{if .Last}}<strong>{{.Name}}</strong>{{else}}<a href="/tree/{{pathesc $ref .Path}}">{{.Name}}</a>{{end}}{{end}}
+</nav>
+{{end}}
+
+{{define "clone"}}
+<details class="dropdown clone">
+  <summary class="btn btn-sm btn-primary">{{template "icon-code"}}Clone<span class="caret"></span></summary>
+  <div class="menu menu-right clone-menu">
+    <label>HTTPS</label>
+    <div class="copy-field"><input readonly value="{{.HTTPCloneURL}}"><button type="button" class="btn btn-sm" onclick="copyPrev(this)">{{template "icon-copy"}}</button></div>
+  </div>
+</details>
+{{end}}
+
+{{define "commitline"}}
+<div class="commitline">
+  {{avatar .Author.Name .Author.Email}}
+  <strong>{{.Author.Name}}</strong>
+  <a class="muted-link subject" href="/commit/{{.SHA}}">{{.Subject}}</a>
+  <span class="spacer"></span>
+  <a class="sha" href="/commit/{{.SHA}}">{{shortsha .SHA}}</a>
+  <span class="muted" title="{{datetime .Author.When}}">{{ago .Author.When}}</span>
+</div>
+{{end}}
+
+{{define "diff"}}
+<div class="diffstat-summary">
+  Showing <strong>{{len .Files}} changed file{{if ne (len .Files) 1}}s{{end}}</strong>
+  with <span class="text-add">{{.Additions}} additions</span> and <span class="text-del">{{.Deletions}} deletions</span>.
+  {{if .Truncated}}<span class="muted">Diff is too large and was truncated.</span>{{end}}
+</div>
+<details class="filelist" open>
+  <summary>Files</summary>
+  <ul>{{range $i, $f := .Files}}<li><a href="#diff-{{$i}}"><span class="status status-{{$f.Status}}">{{slice (print $f.Status) 0 1}}</span>{{fileicon $f.Path}} {{$f.Path}}</a><span class="stat"><span class="text-add">+{{$f.Additions}}</span> <span class="text-del">−{{$f.Deletions}}</span></span></li>{{end}}</ul>
+</details>
+{{range $i, $f := .Files}}
+<details class="difffile" id="diff-{{$i}}" open>
+  <summary class="difffile-header">
+    <span class="status status-{{$f.Status}}">{{$f.Status}}</span>
+    {{fileicon $f.Path}}<span class="path">{{if eq (print $f.Status) "renamed"}}{{$f.OldPath}} → {{end}}{{$f.Path}}</span>
+    <span class="stat"><span class="text-add">+{{$f.Additions}}</span> <span class="text-del">−{{$f.Deletions}}</span></span>
+  </summary>
+  {{if $f.Binary}}<div class="diff-note">Binary file not shown.</div>
+  {{else if $f.Truncated}}<div class="diff-note">Diff for this file is too large to display.</div>
+  {{else if not $f.Hunks}}<div class="diff-note">{{if $f.NewMode}}Mode changed {{$f.OldMode}} → {{$f.NewMode}}{{else}}No content changes.{{end}}</div>
+  {{else}}
+  <table class="diff"><tbody>
+  {{range $f.Hunks}}
+    <tr class="hunk"><td class="ln"></td><td class="ln"></td><td class="code">@@ -{{.OldStart}},{{.OldLines}} +{{.NewStart}},{{.NewLines}} @@ {{.Header}}</td></tr>
+    {{range .Lines}}<tr class="{{lineclass .Kind}}"><td class="ln">{{if .OldNo}}{{.OldNo}}{{end}}</td><td class="ln">{{if .NewNo}}{{.NewNo}}{{end}}</td><td class="code"><span class="marker">{{linechar .Kind}}</span>{{.Content}}{{if .NoEOL}} <span class="noeol" title="No newline at end of file">⏎̸</span>{{end}}</td></tr>{{end}}
+  {{end}}
+  </tbody></table>
+  {{end}}
+</details>
+{{end}}
+{{end}}
+
+{{define "settings-nav"}}
+<nav class="sidenav">
+  <a class="{{if eq . "profile"}}active{{end}}" href="/settings">Profile</a>
+  <a class="{{if eq . "tokens"}}active{{end}}" href="/settings/tokens">Access tokens</a>
+</nav>
+{{end}}
+
+{{define "scripts"}}
+<script>
+function copyPrev(btn){const i=btn.previousElementSibling;navigator.clipboard.writeText(i.value);btn.classList.add('ok');setTimeout(()=>btn.classList.remove('ok'),1200)}
+function copyData(btn){navigator.clipboard.writeText(btn.dataset.copy);btn.classList.add('ok');setTimeout(()=>btn.classList.remove('ok'),1200)}
+function filterMenu(inp){const q=inp.value.toLowerCase();inp.parentElement.querySelectorAll('a[data-name]').forEach(a=>{a.hidden=!a.dataset.name.toLowerCase().includes(q)})}
+document.addEventListener('click',e=>{document.querySelectorAll('details.dropdown[open]').forEach(d=>{if(!d.contains(e.target))d.removeAttribute('open')})});
+</script>
+{{end}}
+
+{{/* pull-icon: *store.Pull */}}
+{{define "pull-icon"}}{{if .IsMerged}}<span class="pr-icon pr-merged" title="Merged">{{template "icon-merge"}}</span>{{else if .IsOpen}}<span class="pr-icon pr-open" title="Open">{{template "icon-pr"}}</span>{{else}}<span class="pr-icon pr-closed" title="Closed">{{template "icon-pr-closed"}}</span>{{end}}{{end}}
+
+{{/* pull-state: *store.Pull, as a coloured badge */}}
+{{define "pull-state"}}{{if .IsMerged}}<span class="state state-merged">{{template "icon-merge"}}Merged</span>{{else if .IsOpen}}<span class="state state-open">{{template "icon-pr"}}Open</span>{{else}}<span class="state state-closed">{{template "icon-pr-closed"}}Closed</span>{{end}}{{end}}
+
+{{define "admin-nav"}}
+<div class="toolbar">
+  <div class="btn-group">
+    <a class="btn {{if eq . "users"}}active{{end}}" href="/admin/users">Users</a>
+    <a class="btn {{if eq . "branches"}}active{{end}}" href="/admin/branches">{{template "icon-shield"}}Branch protection</a>
+    <a class="btn {{if eq . "packages"}}active{{end}}" href="/admin/packages">{{template "icon-package"}}Packages</a>
+    <a class="btn {{if eq . "runners"}}active{{end}}" href="/admin/runners">{{template "icon-play"}}Runners</a>
+    <a class="btn {{if eq . "teams"}}active{{end}}" href="/admin/teams">Teams</a>
+    <a class="btn {{if eq . "deploy"}}active{{end}}" href="/admin/deploy">{{template "icon-rocket"}}Deploy rules</a>
+    <a class="btn {{if eq . "secrets"}}active{{end}}" href="/admin/secrets">{{template "icon-key"}}Secrets</a>
+    <a class="btn {{if eq . "audit"}}active{{end}}" href="/admin/audit">{{template "icon-history"}}Audit log</a>
+  </div>
+</div>
+{{end}}
+
+{{/* evaluation: *deploy.Evaluation */}}
+{{define "evaluation"}}
+<div class="box eval">
+  <div class="box-header"><strong>Checks for <span class="sha">{{shortsha .SHA}}</span></strong>
+    <span class="spacer"></span>
+    {{if .Blocked}}<span class="text-del">{{template "icon-x"}} not allowed</span>{{else if .RejectedBy}}<span class="text-del">rejected by {{join .RejectedBy ", "}}</span>{{else if .ApprovalsPending}}<span class="muted">{{template "icon-dot"}} waiting for approval</span>{{else}}<span class="text-add">{{template "icon-check"}} ready</span>{{end}}
+  </div>
+  {{range .Targets}}
+  <div class="eval-target">
+    <div class="eval-label"><strong class="mono">{{.Label}}</strong>{{if .Artifact}} <span class="muted small mono" title="pinned image">{{.Artifact}}</span>{{end}}</div>
+    <ul class="eval-checks">{{range .Checks}}<li>{{if .OK}}{{template "status-icon" "success"}}{{else}}{{template "status-icon" "failure"}}{{end}} {{.Title}}{{if .Detail}} <span class="muted small">— {{.Detail}}</span>{{end}}</li>{{end}}</ul>
+  </div>
+  {{end}}
+  {{if .Approvals}}
+  <div class="eval-target">
+    <div class="eval-label"><strong>Approvals</strong></div>
+    <ul class="eval-checks">{{range .Approvals}}<li>{{if .Satisfied}}{{template "status-icon" "success"}}{{else}}{{template "status-icon" "pending"}}{{end}}
+      {{len .ApprovedBy}} of {{.Required}} from {{.Approvers}} <span class="muted small">— {{.Description}}{{if .ApprovedBy}}; approved by {{join .ApprovedBy ", "}}{{end}}</span></li>{{end}}</ul>
+  </div>
+  {{end}}
+</div>
+{{end}}

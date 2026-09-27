@@ -1,0 +1,44 @@
+{{define "content"}}{{$d := .Data}}{{$dep := $d.D}}{{$ev := $d.Eval}}
+<nav class="breadcrumbs"><a href="/deploy">Deployments</a><span class="sep">/</span><strong>#{{$dep.ID}}</strong></nav>
+<div class="run-header">
+  {{template "status-icon" (deploystatus $dep.Status)}}
+  <div>
+    <h2>Deployment #{{$dep.ID}} <span class="badge badge-st badge-{{$dep.Status}}">{{$dep.Status}}</span></h2>
+    <div class="muted small">requested by {{$dep.RequestedByName}} <span title="{{datetime $dep.CreatedAt}}">{{ago $dep.CreatedAt}}</span>{{if $dep.Comment}} · “{{$dep.Comment}}”{{end}}</div>
+  </div>
+  <span class="spacer"></span>
+  {{if $d.CanCancel}}<form method="post" action="/deploy/{{$dep.ID}}/cancel" onsubmit="return confirm('Cancel this deployment?')"><button class="btn btn-sm btn-danger" type="submit">Cancel</button></form>{{end}}
+  {{if .User}}<a class="btn btn-sm" href="{{$d.Redeploy}}">Deploy this again</a>{{end}}
+</div>
+<div class="box pad">
+  <dl class="props">
+    <dt>Commit</dt><dd><a class="sha" href="/commit/{{$dep.SHA}}">{{shortsha $dep.SHA}}</a> {{with $d.Commit}}{{.Subject}} <span class="muted small">— {{.Author.Name}}</span>{{end}} <span class="muted small">(requested as <code>{{$dep.Ref}}</code>)</span></dd>
+    <dt>Recipes</dt><dd>from the default branch at <a class="sha" href="/tree/{{$dep.RecipeSHA}}/.onegit/deploy">{{shortsha $dep.RecipeSHA}}</a> <span class="muted small">— pinned when requested; approvers approve exactly this version</span></dd>
+    {{if $dep.RunID}}<dt>Run</dt><dd><a href="/actions/runs/{{deint64 $dep.RunID}}">#{{deint64 $dep.RunID}}</a></dd>{{end}}
+  </dl>
+</div>
+{{if $d.Jobs}}
+<div class="box">
+  <div class="box-header"><strong>Jobs</strong></div>
+  <table class="table"><tbody>{{range $d.Jobs}}
+    <tr><td>{{template "status-icon" .Status}} <a href="/actions/jobs/{{.ID}}"><strong>{{.Name}}</strong></a></td><td>{{.Status}}</td><td class="muted">{{.RunnerName}}</td><td class="muted">{{dur .Duration}}</td><td class="muted small">{{.Message}}</td></tr>
+  {{end}}</tbody></table>
+</div>
+{{end}}
+{{if eq $dep.Status "pending"}}{{template "evaluation" $ev}}{{else}}<details class="box pad"><summary>Checks (current evaluation)</summary>{{template "evaluation" $ev}}</details>{{end}}
+{{if $d.Reviews}}
+<div class="box">
+  <div class="box-header"><strong>Reviews</strong></div>
+  {{range $d.Reviews}}<div class="run-row">{{template "status-icon" (deploystatus .Verdict)}}<div class="run-main"><strong>{{.Username}}</strong> {{if eq .Verdict "approve"}}approved{{else}}rejected{{end}} <span class="muted small">{{ago .CreatedAt}}</span>{{if .Comment}}<div class="small">{{.Comment}}</div>{{end}}</div></div>{{end}}
+</div>
+{{end}}
+{{if $d.CanApprove}}
+<form method="post" action="/deploy/{{$dep.ID}}/review" class="box pad form">
+  <label>Comment <span class="muted small">(optional)</span><input name="comment"></label>
+  <div class="form-actions">
+    <button class="btn btn-primary" name="verdict" value="approve" type="submit">{{template "icon-check"}}Approve</button>
+    <button class="btn btn-danger" name="verdict" value="reject" type="submit">{{template "icon-x"}}Reject</button>
+  </div>
+</form>
+{{end}}
+{{end}}

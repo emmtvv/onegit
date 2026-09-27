@@ -1,0 +1,31 @@
+{{define "content"}}{{template "admin-nav" "users"}}
+<div class="box">
+  <div class="box-header"><strong>Users</strong><span class="spacer"></span><span class="muted">{{len .Data.Users}} total</span></div>
+  <table class="table">
+    <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Sign-in</th><th>Created</th><th></th></tr></thead>
+    <tbody>
+    {{range .Data.Users}}
+      <tr class="{{if not .Active}}inactive{{end}}">
+        <td>{{avatar .Username .Email}} <a href="/admin/users/{{.ID}}"><strong>{{.Username}}</strong></a> <span class="muted">{{.FullName}}</span></td>
+        <td>{{.Email}}</td>
+        <td><span class="badge badge-{{.Role}}">{{.Role}}</span>{{if not .Active}} <span class="badge badge-off">disabled</span>{{end}}</td>
+        <td class="muted">{{if .HasSSO}}SSO{{end}}{{if and .HasSSO .PasswordHash}} + {{end}}{{if .PasswordHash}}password{{end}}</td>
+        <td class="muted">{{date .CreatedAt}}</td>
+        <td><a class="btn btn-sm" href="/admin/users/{{.ID}}">Edit</a></td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+<div class="box pad">
+  <h2>Create user</h2>
+  <form method="post" action="/admin/users" class="form grid-form">
+    <label>Username<input name="username" required pattern="[a-zA-Z0-9][a-zA-Z0-9._\-]{0,38}"></label>
+    <label>Full name<input name="full_name"></label>
+    <label>Email<input name="email" type="email"></label>
+    <label>Temporary password <span class="muted small">(changed at first login; empty for SSO-only users)</span><input name="password" type="password" autocomplete="new-password"></label>
+    <label>Role<select name="role"><option value="read">read</option><option value="write" selected>write</option><option value="admin">admin</option></select></label>
+    <div><button class="btn btn-primary" type="submit">Create user</button></div>
+  </form>
+</div>
+{{end}}

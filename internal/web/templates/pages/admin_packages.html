@@ -1,0 +1,35 @@
+{{define "content"}}{{template "admin-nav" "packages"}}{{$d := .Data}}{{$r := $d.Rule}}
+<div class="box pad">
+  <dl class="props">
+    <dt>Storage used</dt><dd>{{bytes $d.Used}}{{if $d.MaxTotal}} of {{bytes $d.MaxTotal}}{{end}} <span class="muted small">(unique layers; unreferenced ones are garbage-collected after 24 h)</span></dd>
+    <dt>Max layer size</dt><dd>{{if $d.MaxBlob}}{{bytes $d.MaxBlob}}{{else}}unlimited{{end}} <span class="muted small">(<code>ONEGIT_REGISTRY_MAX_BLOB_SIZE</code>, <code>…_MAX_TOTAL_SIZE</code>)</span></dd>
+  </dl>
+</div>
+<div class="box">
+  <div class="box-header"><strong>Cleanup rule</strong><span class="spacer"></span>
+    {{if $r.LastRunAt}}<span class="muted small">last run <span title="{{datetime (deref_time $r.LastRunAt)}}">{{ago (deref_time $r.LastRunAt)}}</span>, removed {{$r.LastRemoved}}</span>{{end}}</div>
+  <div class="pad">
+    <p class="muted">Applied to every image every 6 hours. For each image, versions are taken newest first: the first <em>keep</em> versions stay, then a version is removed unless it matches the keep pattern, is younger than the given days, or does not match the remove pattern. <code>latest</code> is never removed. Patterns are case-insensitive regular expressions matching the whole version (or <code>image/version</code>).</p>
+    <form method="post" action="/admin/packages" class="form protection-form">
+      <label class="check"><input type="checkbox" name="enabled" {{if $r.Enabled}}checked{{end}}> Enabled</label>
+      <label class="inline">Keep the most recent <input type="number" name="keep_count" min="0" value="{{$r.KeepCount}}"> versions per image</label>
+      <label>Keep versions matching<input name="keep_pattern" class="mono" value="{{$r.KeepPattern}}" placeholder="v\d+\.\d+\.\d+"></label>
+      <label class="inline">Remove versions older than <input type="number" name="remove_days" min="0" value="{{$r.RemoveDays}}"> days</label>
+      <label>Remove versions matching<input name="remove_pattern" class="mono" value="{{$r.RemovePattern}}" placeholder="(empty = any)"></label>
+      <label class="check"><input type="checkbox" name="match_full_name" {{if $r.MatchFullName}}checked{{end}}> Match patterns against <code>image/version</code></label>
+      <div><button class="btn btn-primary" type="submit">Save rule</button></div>
+    </form>
+  </div>
+</div>
+{{if not .Error}}
+<div class="box">
+  <div class="box-header"><strong>Preview</strong><span class="muted small">{{len $d.Plan}} version{{if ne (len $d.Plan) 1}}s{{end}} ({{bytes $d.PlanSize}}) would be removed now</span><span class="spacer"></span>
+    {{if $d.Plan}}<form method="post" action="/admin/packages/run" onsubmit="return confirm('Remove {{len $d.Plan}} versions now?')"><button class="btn btn-sm btn-danger" type="submit">Run cleanup now</button></form>{{end}}</div>
+  {{if $d.Plan}}
+  <table class="table"><thead><tr><th>Image</th><th>Version</th><th>Size</th><th>Pushed</th></tr></thead><tbody>
+  {{range $d.Plan}}<tr><td class="mono">{{.Repo}}</td><td class="mono">{{if .Tagged}}{{.Version}}{{else}}<span class="muted">untagged {{shortsha (slice .Version 7)}}</span>{{end}}</td><td>{{bytes .Size}}</td><td class="muted">{{ago .UpdatedAt}}</td></tr>{{end}}
+  </tbody></table>
+  {{else}}<div class="blob-note">Nothing to remove with the saved rule.</div>{{end}}
+</div>
+{{end}}
+{{end}}

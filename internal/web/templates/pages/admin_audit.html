@@ -1,0 +1,11 @@
+{{define "content"}}{{template "admin-nav" "audit"}}
+<div class="box">
+  <table class="table">
+    <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Subject</th><th>Details</th></tr></thead>
+    <tbody>{{range .Data}}
+      <tr><td class="muted nowrap" title="{{datetime .At}}">{{ago .At}}</td><td>{{.ActorName}}</td><td class="mono">{{.Action}}</td><td>{{.Subject}}</td><td class="mono small wrap">{{if .Data}}{{jsontext .Data}}{{end}}</td></tr>
+    {{else}}<tr><td colspan="5" class="muted">Nothing yet.</td></tr>{{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}

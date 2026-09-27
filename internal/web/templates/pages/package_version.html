@@ -1,0 +1,87 @@
+{{define "content"}}{{$d := .Data}}{{$w := and .User .User.CanWrite}}{{$m := $d.Manifest}}{{$img := $d.Details.Image}}
+<nav class="breadcrumbs"><a href="/packages">Packages</a><span class="sep">/</span><a class="mono" href="{{$d.URL}}">{{$d.Name}}</a><span class="sep">/</span><strong class="mono">{{if $d.Tagged}}{{$d.Version}}{{else}}{{shortsha (slice $m.Digest 7)}}{{end}}</strong></nav>
+<div class="version-layout">
+<div class="version-main">
+  <div class="box">
+    <div class="box-header"><strong>Installation</strong></div>
+    <div class="pad registry-help">
+      <div class="copy-field"><input readonly value="docker pull {{$d.Pull}}"><button type="button" class="btn btn-sm" onclick="copyPrev(this)">{{template "icon-copy"}}</button></div>
+      {{if $d.Tagged}}<div class="copy-field"><input readonly value="docker pull {{$d.PullByDigest}}"><button type="button" class="btn btn-sm" onclick="copyPrev(this)">{{template "icon-copy"}}</button></div>{{end}}
+    </div>
+  </div>
+
+  {{if gt (len $d.Details.Platforms) 1}}
+  <div class="box">
+    <div class="box-header"><strong>Platforms</strong></div>
+    <table class="table">
+      <thead><tr><th>Platform</th><th>Digest</th><th>Size</th></tr></thead>
+      <tbody>{{range $d.Details.Platforms}}
+        <tr class="{{if and $img (eq .Digest $img.Digest)}}selected{{end}}">
+          <td><a href="{{$d.Self}}?platform={{.Digest}}"><span class="label mono">{{.Platform}}</span></a></td>
+          <td><span class="sha" title="{{.Digest}}">{{shortsha (slice .Digest 7)}}</span>
+            <button type="button" class="btn btn-sm btn-icon" title="Copy digest" data-copy="{{.Digest}}" onclick="copyData(this)">{{template "icon-copy"}}</button></td>
+          <td>{{bytes .Size}}</td>
+        </tr>{{end}}
+      </tbody>
+    </table>
+  </div>
+  {{end}}
+
+  {{with $img}}
+  {{if .MediaType}}
+  <div class="box">
+    <div class="box-header"><strong>Artifact</strong><span class="muted mono small">{{.MediaType}}</span></div>
+    <table class="table"><thead><tr><th>Media type</th><th>Digest</th><th>Size</th></tr></thead><tbody>
+      {{range .Layers}}<tr><td class="mono small">{{.Command}}</td><td class="sha">{{shortsha (slice .Digest 7)}}</td><td>{{bytes .Size}}</td></tr>{{end}}
+    </tbody></table>
+  </div>
+  {{else}}
+  <div class="box">
+    <div class="box-header"><strong>Image layers</strong>{{if .Platform}}<span class="label mono">{{.Platform}}</span>{{end}}</div>
+    <table class="table layers">
+      <tbody>{{range $i, $l := .Layers}}
+        <tr class="{{if not $l.Digest}}empty-layer{{end}}">
+          <td class="num muted">{{add $i 1}}</td>
+          <td class="mono cmd">{{if $l.Command}}{{$l.Command}}{{else}}<span class="muted">{{shortsha (slice $l.Digest 7)}}</span>{{end}}</td>
+          <td class="right nowrap">{{if $l.Digest}}{{bytes $l.Size}}{{end}}</td>
+        </tr>{{else}}<tr><td class="muted">No layers.</td></tr>{{end}}
+      </tbody>
+    </table>
+  </div>
+  {{if .Labels}}
+  <div class="box">
+    <div class="box-header"><strong>Labels</strong></div>
+    <table class="table"><tbody>{{range .Labels}}<tr><td class="mono small">{{.Key}}</td><td class="mono small wrap">{{.Value}}</td></tr>{{end}}</tbody></table>
+  </div>
+  {{end}}
+  {{end}}
+  {{end}}
+</div>
+
+<aside class="version-side">
+  <div class="box pad">
+    <dl class="props side-props">
+      <dt>Type</dt><dd>{{$d.Kind}}</dd>
+      <dt>Digest</dt><dd><span class="sha" title="{{$m.Digest}}">{{shortsha (slice $m.Digest 7)}}</span> <button type="button" class="btn btn-sm btn-icon" title="Copy digest" data-copy="{{$m.Digest}}" onclick="copyData(this)">{{template "icon-copy"}}</button></dd>
+      <dt>Size</dt><dd>{{bytes $m.TotalSize}}</dd>
+      <dt>Pushed</dt><dd><span title="{{datetime $m.CreatedAt}}">{{ago $m.CreatedAt}}</span> by {{$d.PushedBy}}</dd>
+      {{with $img}}{{if .Created}}<dt>Built</dt><dd><span title="{{datetime (deref_time .Created)}}">{{ago (deref_time .Created)}}</span></dd>{{end}}
+      {{if .Command}}<dt>Command</dt><dd class="mono small wrap">{{.Command}}</dd>{{end}}
+      {{if .WorkDir}}<dt>Workdir</dt><dd class="mono small">{{.WorkDir}}</dd>{{end}}
+      {{if .User}}<dt>User</dt><dd class="mono small">{{.User}}</dd>{{end}}
+      {{if .Ports}}<dt>Ports</dt><dd class="mono small">{{range .Ports}}{{.}} {{end}}</dd>{{end}}{{end}}
+    </dl>
+  </div>
+  <div class="box pad">
+    <div class="side-title">Tags</div>
+    {{range $d.Tags}}<a class="label mono" href="{{pkgurl $d.Name}}/-/{{.}}">{{.}}</a> {{else}}<span class="muted">untagged</span>{{end}}
+  </div>
+  {{if $w}}
+  <form method="post" action="/packages/-/delete" onsubmit="return confirm('Delete {{$d.Heading}}?')">
+    <input type="hidden" name="name" value="{{$d.Name}}"><input type="hidden" name="version" value="{{$d.Version}}">
+    <button class="btn btn-sm btn-danger btn-block" type="submit">Delete this version</button>
+  </form>
+  {{end}}
+</aside>
+</div>
+{{end}}

@@ -1,0 +1,46 @@
+{{define "content"}}{{template "admin-nav" "runners"}}{{$d := .Data}}
+{{if $d.Token}}
+<div class="flash flash-success">
+  <p><strong>Token for runner {{$d.TokenFor}}</strong> — copy it now, it is not shown again.</p>
+  <div class="copy-field"><input readonly value="{{$d.Token}}"><button type="button" class="btn btn-sm" onclick="copyPrev(this)">{{template "icon-copy"}}</button></div>
+  <p class="small">Start the runner on its machine (needs git, bash and whatever the jobs use, e.g. docker):</p>
+  <div class="copy-field"><input readonly value="onegit runner -url {{$d.URL}} -token {{$d.Token}} -workdir /var/lib/onegit-runner"><button type="button" class="btn btn-sm" onclick="copyPrev(this)">{{template "icon-copy"}}</button></div>
+</div>
+{{end}}
+<p class="muted">Pipeline runners (<strong>ci</strong>) run untrusted code from any branch and never receive secrets. Deploy runners (<strong>deploy</strong>) only take approved deployments whose target matches their selector, and receive the secrets of that target. Keep them on different machines: a deploy runner usually has production credentials.</p>
+<div class="box">
+  <table class="table">
+    <thead><tr><th>Runner</th><th>Kind</th><th>Labels / targets</th><th>Last seen</th><th></th></tr></thead>
+    <tbody>{{range $d.Runners}}
+      <tr class="{{if not .Enabled}}inactive{{end}}">
+        <td><strong>{{.Name}}</strong>{{if .Version}} <span class="muted small">{{.Version}}</span>{{end}}</td>
+        <td><span class="badge">{{.Kind}}</span></td>
+        <td colspan="2">
+          <form method="post" action="/admin/runners/{{.ID}}" class="inline-form runner-form">
+            <input name="labels" value="{{join .Labels ", "}}" placeholder="labels" class="mono" size="16" title="labels">
+            {{if eq .Kind "deploy"}}<input name="targets" value="{{selectortext .Targets}}" placeholder="all targets" class="mono" size="30" title="targets">{{end}}
+            <label class="check small"><input type="checkbox" name="enabled" {{if .Enabled}}checked{{end}}> enabled</label>
+            <button class="btn btn-sm" type="submit">Save</button>
+            <span class="muted small">{{if .LastSeenAt}}seen {{ago (deref_time .LastSeenAt)}}{{else}}never connected{{end}}</span>
+          </form>
+        </td>
+        <td class="right nowrap">
+          <form method="post" action="/admin/runners/{{.ID}}/token" class="inline" onsubmit="return confirm('Issue a new token? The old one stops working.')"><button class="btn btn-sm" type="submit">New token</button></form>
+          <form method="post" action="/admin/runners/{{.ID}}/delete" class="inline" onsubmit="return confirm('Delete runner {{.Name}}?')"><button class="btn btn-sm btn-danger" type="submit">Delete</button></form>
+        </td>
+      </tr>
+    {{else}}<tr><td colspan="5" class="muted">No runners yet.</td></tr>{{end}}
+    </tbody>
+  </table>
+</div>
+<div class="box">
+  <div class="box-header"><strong>Add runner</strong></div>
+  <form method="post" action="/admin/runners" class="pad form">
+    <label>Name<input name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._-]*" class="mono"></label>
+    <label>Kind<select name="kind"><option value="ci">ci — pipelines (no secrets)</option><option value="deploy">deploy — approved deployments</option></select></label>
+    <label>Labels <span class="muted small">(jobs choose runners with <code>runs-on</code>; comma-separated)</span><input name="labels" class="mono" placeholder="linux, docker"></label>
+    <label>Targets <span class="muted small">(deploy runners only; empty = every target, e.g. <code>environment=production</code>)</span><input name="targets" class="mono"></label>
+    <div><button class="btn btn-primary" type="submit">Create runner</button></div>
+  </form>
+</div>
+{{end}}

@@ -1,0 +1,26 @@
+{{define "content"}}{{template "admin-nav" "users"}}{{$u := .Data.Target}}{{$self := eq $u.ID .User.ID}}
+<p><a href="/admin/users">← All users</a></p>
+<div class="box pad">
+  <h2>{{avatar $u.Username $u.Email "lg"}} {{$u.Username}}</h2>
+  <form method="post" action="/admin/users/{{$u.ID}}" class="form grid-form">
+    <label>Full name<input name="full_name" value="{{$u.FullName}}"></label>
+    <label>Email<input name="email" type="email" value="{{$u.Email}}"></label>
+    <label>Role<select name="role" {{if $self}}disabled{{end}}>
+      <option value="read" {{if eq (print $u.Role) "read"}}selected{{end}}>read</option>
+      <option value="write" {{if eq (print $u.Role) "write"}}selected{{end}}>write</option>
+      <option value="admin" {{if eq (print $u.Role) "admin"}}selected{{end}}>admin</option>
+    </select></label>
+    <label>New temporary password <span class="muted small">(leave empty to keep)</span><input name="password" type="password" autocomplete="new-password"></label>
+    <label class="check"><input type="checkbox" name="active" {{if $u.Active}}checked{{end}} {{if $self}}disabled{{end}}> Active</label>
+    {{if $u.HasSSO}}<label class="check"><input type="checkbox" name="unlink_sso"> Unlink SSO identity</label>{{end}}
+    <div><button class="btn btn-primary" type="submit">Save</button></div>
+  </form>
+</div>
+{{if not $self}}
+<div class="box pad danger-zone">
+  <h2>Delete user</h2>
+  <p class="muted">Removes the account together with its access tokens.</p>
+  <form method="post" action="/admin/users/{{$u.ID}}/delete" onsubmit="return confirm('Delete {{$u.Username}}?')"><button class="btn btn-danger">Delete {{$u.Username}}</button></form>
+</div>
+{{end}}
+{{end}}

@@ -1,0 +1,33 @@
+{{define "content"}}{{$d := .Data}}
+<div class="toolbar">
+  <div class="btn-group">
+    <a class="btn {{if eq $d.State "open"}}active{{end}}" href="/pulls">{{template "icon-pr"}}{{$d.Open}} Open</a>
+    <a class="btn {{if eq $d.State "closed"}}active{{end}}" href="/pulls?state=closed">{{template "icon-check"}}{{$d.Closed}} Closed</a>
+  </div>
+  <span class="spacer"></span>
+  {{if and .User .User.CanWrite}}<a class="btn btn-primary" href="/pulls/new">New pull request</a>{{end}}
+</div>
+<div class="box">
+  {{range $d.Pulls}}
+  <div class="pull-row">
+    {{template "pull-icon" .}}
+    <div class="grow">
+      <a class="pull-title muted-link" href="/pulls/{{.ID}}">{{.Title}}</a>
+      <div class="muted small">
+        #{{.ID}}
+        {{if .IsMerged}}by {{.AuthorName}} was merged <span title="{{datetime .MergedAt}}">{{ago .MergedAt}}</span>
+        {{else if .IsOpen}}opened <span title="{{datetime .CreatedAt}}">{{ago .CreatedAt}}</span> by {{.AuthorName}}
+        {{else}}by {{.AuthorName}} was closed <span title="{{datetime .ClosedAt}}">{{ago .ClosedAt}}</span>{{end}}
+      </div>
+    </div>
+    <span class="branch-pair"><span class="branch-name">{{.HeadBranch}}</span> → <span class="branch-name">{{.BaseBranch}}</span></span>
+  </div>
+  {{else}}
+  <div class="blob-note">{{if eq $d.State "open"}}No open pull requests.{{else}}No closed pull requests.{{end}}</div>
+  {{end}}
+</div>
+<div class="pager">
+  {{if gt $d.Page 1}}<a class="btn" href="?state={{$d.State}}&page={{sub $d.Page 1}}">Newer</a>{{end}}
+  {{if $d.HasNext}}<a class="btn" href="?state={{$d.State}}&page={{add $d.Page 1}}">Older</a>{{end}}
+</div>
+{{end}}

@@ -1,0 +1,14 @@
+.git
+.github
+.gitignore
+.env
+.golangci.yml
+data/
+bin/
+onegit
+coverage.*
+docs/
+assets/
+*.md
+docker-compose*.yml
+Makefile

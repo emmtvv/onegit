@@ -1,0 +1,35 @@
+{{define "content"}}{{template "admin-nav" "branches"}}{{$d := .Data}}
+<p class="muted">Rules apply to branches matching an exact name or a glob pattern (<code>release/*</code>). When several rules match, an exact name wins, then the longest pattern. Approvals only count from users with write access, and never from the PR author.</p>
+{{range $d.Rules}}
+<div class="box">
+  <div class="box-header">{{template "icon-shield"}}<strong class="mono">{{.Pattern}}</strong><span class="spacer"></span>
+    <form method="post" action="/admin/branches/{{.ID}}/delete" onsubmit="return confirm('Delete the rule for {{.Pattern}}?')"><button class="btn btn-sm btn-danger" type="submit">Delete</button></form>
+  </div>
+  <div class="pad">{{template "protection-form" (dict "R" . "Action" (print "/admin/branches/" .ID) "Button" "Save")}}</div>
+</div>
+{{else}}
+<div class="box blob-note">No branch protection rules yet. Anyone with write access can push to any branch.</div>
+{{end}}
+<div class="box">
+  <div class="box-header"><strong>Add rule</strong></div>
+  <div class="pad">{{template "protection-form" (dict "R" nil "Action" "/admin/branches" "Button" "Create rule" "Default" $d.Default)}}</div>
+</div>
+{{end}}
+
+{{define "protection-form"}}{{$r := .R}}
+<form method="post" action="{{.Action}}" class="form protection-form">
+  <label>Branch name or pattern<input name="pattern" required value="{{if $r}}{{$r.Pattern}}{{else}}{{.Default}}{{end}}" class="mono"></label>
+  <label class="check"><input type="checkbox" name="require_pull_request" {{if or (not $r) $r.RequirePullRequest}}checked{{end}}> Require a pull request before merging <span class="muted small">(direct pushes are rejected)</span></label>
+  <label class="inline">Required approvals <input type="number" name="required_approvals" min="0" max="20" value="{{if $r}}{{$r.RequiredApprovals}}{{else}}1{{end}}"></label>
+  <label class="check"><input type="checkbox" name="dismiss_stale_approvals" {{if and $r $r.DismissStaleApprovals}}checked{{end}}> Dismiss stale approvals when new commits are pushed</label>
+  <label class="check"><input type="checkbox" name="require_code_owner_review" {{if and $r $r.RequireCodeOwnerReview}}checked{{end}}> Require review from code owners <span class="muted small">(CODEOWNERS on the base branch)</span></label>
+  <label class="check"><input type="checkbox" name="block_on_changes_requested" {{if or (not $r) $r.BlockOnChangesRequested}}checked{{end}}> Block merging while changes are requested</label>
+  <label>Required checks <span class="muted small">(one per line, e.g. <code>ci / test</code>; must pass on the PR head before merging)</span>
+    <textarea name="required_checks" rows="2" class="mono">{{if $r}}{{join $r.RequiredChecks "\n"}}{{end}}</textarea></label>
+  <label>Protected paths <span class="muted small">(CODEOWNERS syntax, enforced by the server whatever the repository contains, e.g. <code>/.onegit/ @sre</code>)</span>
+    <textarea name="owners" rows="3" class="mono" placeholder="/.onegit/deploy/   @sre&#10;/CODEOWNERS        @admins">{{if $r}}{{$r.Owners}}{{end}}</textarea></label>
+  <label class="check"><input type="checkbox" name="allow_force_push" {{if and $r $r.AllowForcePush}}checked{{end}}> Allow force-push</label>
+  <label class="check"><input type="checkbox" name="allow_deletion" {{if and $r $r.AllowDeletion}}checked{{end}}> Allow deletion</label>
+  <div><button class="btn btn-primary" type="submit">{{.Button}}</button></div>
+</form>
+{{end}}

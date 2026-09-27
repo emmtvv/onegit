@@ -1,0 +1,18 @@
+{{define "content"}}
+<div class="auth-box">
+  <div class="auth-logo">{{template "icon-logo"}}</div>
+  <h1>Sign in to {{.Cfg.Repo.Name}}</h1>
+  {{if .Data.OIDC}}
+    <a class="btn btn-primary btn-block" href="/login/oidc?next={{queryesc .Data.Next}}">Continue with {{.Cfg.OIDC.DisplayName}}</a>
+    {{if .Cfg.Auth.PasswordLogin}}<div class="divider"><span>or</span></div>{{end}}
+  {{end}}
+  {{if .Cfg.Auth.PasswordLogin}}
+  <form method="post" action="/login" class="form">
+    <input type="hidden" name="next" value="{{.Data.Next}}">
+    <label>Username<input name="username" value="{{.Data.Username}}" autocomplete="username" required autofocus></label>
+    <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+    <button class="btn {{if not .Data.OIDC}}btn-primary{{end}} btn-block" type="submit">Sign in</button>
+  </form>
+  {{end}}
+</div>
+{{end}}

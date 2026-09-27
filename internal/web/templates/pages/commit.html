@@ -1,0 +1,17 @@
+{{define "content"}}{{$d := .Data}}{{$c := $d.Commit}}
+<div class="box commit-head">
+  <div class="commit-title">
+    <h2>{{$c.Subject}}</h2>
+    <a class="btn btn-sm" href="/tree/{{$c.SHA}}">Browse files</a>
+  </div>
+  {{if $c.Body}}<pre class="commit-body">{{$c.Body}}</pre>{{end}}
+  <div class="commit-meta">
+    {{avatar $c.Author.Name $c.Author.Email}}
+    <strong>{{$c.Author.Name}}</strong> <span class="muted">authored <span title="{{datetime $c.Author.When}}">{{ago $c.Author.When}}</span></span>
+    {{if ne $c.Author.Email $c.Committer.Email}}<span class="muted">· committed by <strong>{{$c.Committer.Name}}</strong></span>{{end}}
+    <span class="spacer"></span>
+    <span class="muted">{{if $c.Parents}}{{len $c.Parents}} parent{{if gt (len $c.Parents) 1}}s{{end}} {{range $c.Parents}}<a class="sha" href="/commit/{{.}}">{{shortsha .}}</a> {{end}}{{end}}commit <code class="sha">{{$c.SHA}}</code></span>
+  </div>
+</div>
+{{template "diff" $d.Diff}}
+{{end}}
