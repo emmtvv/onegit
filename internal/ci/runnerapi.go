@@ -111,19 +111,23 @@ func (s *Service) fetch(w http.ResponseWriter, r *http.Request) {
 	accept := func(j *store.Job) bool {
 		return runner.Kind != "deploy" || SelectorMatches(runner.Targets, j.Target)
 	}
+	// Claiming must not be cut short by the runner hanging up: a cancelled
+	// commit may still have been applied, leaving a running job nobody holds.
+	ctx := context.WithoutCancel(r.Context())
 	deadline := time.Now().Add(fetchWait)
 	for {
+		if r.Context().Err() != nil {
+			return
+		}
 		jobToken := auth.JobTokenPrefix + auth.RandomString(30)
-		j, err := s.Store.ClaimJob(r.Context(), runner, auth.HashToken(jobToken), accept)
+		j, err := s.Store.ClaimJob(ctx, runner, auth.HashToken(jobToken), accept)
 		if err != nil {
-			if r.Context().Err() == nil {
-				s.Log.Error("claim job", "runner", runner.Name, "err", err)
-				http.Error(w, "internal error", http.StatusInternalServerError)
-			}
+			s.Log.Error("claim job", "runner", runner.Name, "err", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 		if j != nil {
-			a, err := s.assignment(r.Context(), j, jobToken)
+			a, err := s.assignment(ctx, j, jobToken)
 			if err != nil {
 				s.Log.Error("prepare job", "job", j.ID, "err", err)
 				if err := s.FinishJob(context.Background(), j.ID, store.JobFailure, "could not prepare the job: "+err.Error()); err != nil {
@@ -131,7 +135,7 @@ func (s *Service) fetch(w http.ResponseWriter, r *http.Request) {
 				}
 				continue
 			}
-			s.JobStarted(r.Context(), j)
+			s.JobStarted(ctx, j)
 			writeJSON(w, http.StatusOK, a)
 			return
 		}

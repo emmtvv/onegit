@@ -85,3 +85,26 @@ Pull the new image and restart. Database migrations run at startup, one
 replica at a time (an advisory lock serialises them). Read the
 [changelog](../CHANGELOG.md) before upgrading across minor versions while
 onegit is below 1.0.
+
+### PostgreSQL major versions
+
+A new PostgreSQL major version can't read the previous one's data files, so
+a compose update that bumps the `postgres` image needs a dump and restore.
+From 18 on the data lives in a per-version subdirectory of the `pgdata`
+volume. Moving from 17 (the `postgres` volume) to 18:
+
+```sh
+# 1. Still on the old compose file: stop onegit and dump the database.
+docker compose stop onegit
+docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > onegit.dump
+docker compose down
+
+# 2. Update the compose file, start the new PostgreSQL and restore.
+docker compose up -d --wait postgres
+docker compose exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner --exit-on-error' < onegit.dump
+docker compose up -d
+```
+
+The old volume is left untouched; remove it (`docker volume rm
+<project>_postgres`) once onegit works on the new one. Don't start onegit
+before the restore: it would initialise an empty database.

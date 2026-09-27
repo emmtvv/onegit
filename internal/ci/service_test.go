@@ -527,16 +527,25 @@ func TestSecretsFailureFailsJob(t *testing.T) {
 	run, err := e.svc.StartDeployment(ctx, d, []ci.DeployJob{{Target: map[string]string{"e": "x"}, Key: "e=x", Label: "x", Recipe: recipe}})
 	testutil.Must(t, err)
 	tok := newRunner(t, e.st, "d", "deploy", []string{}, nil)
-	c, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	// After failing the job the handler keeps long-polling for another one:
+	// hold the request open until the job is done, then hang up.
+	c, cancel := context.WithCancel(ctx)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(c, "POST", srv.URL+"/api/runner/v1/fetch", strings.NewReader("{}"))
 	req.Header.Set("Authorization", "Bearer "+tok)
-	if resp, err := http.DefaultClient.Do(req); err == nil {
-		resp.Body.Close()
-	}
-	jobs, _ := e.st.JobsForRun(ctx, run.ID)
-	if jobs[0].Status != store.JobFailure || !strings.Contains(jobs[0].Message, "could not prepare") {
-		t.Errorf("job = %s %q", jobs[0].Status, jobs[0].Message)
+	go func() {
+		if resp, err := http.DefaultClient.Do(req); err == nil {
+			resp.Body.Close()
+		}
+	}()
+	var job *store.Job
+	testutil.Eventually(t, 10*time.Second, "job to fail", func() bool {
+		jobs, _ := e.st.JobsForRun(ctx, run.ID)
+		job = jobs[0]
+		return store.JobTerminal(job.Status)
+	})
+	if job.Status != store.JobFailure || !strings.Contains(job.Message, "could not prepare") {
+		t.Errorf("job = %s %q", job.Status, job.Message)
 	}
 }
 

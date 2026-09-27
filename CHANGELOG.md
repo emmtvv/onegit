@@ -7,6 +7,20 @@ include breaking changes, always described here.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-28
+
+### Changed
+
+- **PostgreSQL 18** in the compose stack. Its data now lives in the new
+  `pgdata` volume, mounted at `/var/lib/postgresql`. Existing installations
+  must dump and restore the database; see
+  [PostgreSQL major versions](docs/operations.md#postgresql-major-versions).
+
+### Fixed
+
+- A runner that hung up while a job was being claimed could leave the job
+  running with no one to execute it until it timed out as lost.
+
 ## [1.0.0] - 2026-09-27
 
 First public release.
@@ -52,5 +66,6 @@ First public release.
   amd64 and arm64, `docker-compose.yml` with the full stack, admin CLI
   (`list-users`, `reset-password`, `registry-gc`).
 
-[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/emmtvv/onegit/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/emmtvv/onegit/releases/tag/v1.0.0
