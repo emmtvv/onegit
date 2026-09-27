@@ -15,7 +15,7 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
     -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT}" \
     -o /out/onegit ./cmd/onegit
 
-FROM alpine:3.22
+FROM alpine:3.24
 # git (+ git-daemon, which ships http-backend on Alpine) is the only runtime
 # dependency: onegit shells out to it for every
 # repository operation. The repo volume may be owned by another uid on some
