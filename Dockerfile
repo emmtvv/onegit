@@ -2,7 +2,7 @@
 
 # The build stage runs on the build host's platform and cross-compiles, so
 # multi-platform images don't need emulation for the Go build.
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
