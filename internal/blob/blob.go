@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/url"
 	"strings"
 
@@ -29,11 +30,16 @@ func Open(ctx context.Context, cfg *config.Config) (*Store, error) {
 	if u, err := url.Parse(endpoint); err == nil && u.Host != "" {
 		endpoint, secure = u.Host, u.Scheme == "https"
 	}
-	c, err := minio.New(endpoint, &minio.Options{
+	opts := &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.S3.AccessKey, cfg.S3.SecretKey, ""),
 		Secure: secure,
 		Region: cfg.S3.Region,
-	})
+	}
+	endpoint, err := underscoreSafe(endpoint, opts)
+	if err != nil {
+		return nil, fmt.Errorf("s3 client: %w", err)
+	}
+	c, err := minio.New(endpoint, opts)
 	if err != nil {
 		return nil, fmt.Errorf("s3 client: %w", err)
 	}
@@ -54,6 +60,38 @@ func Open(ctx context.Context, cfg *config.Config) (*Store, error) {
 		}
 	}
 	return s, nil
+}
+
+// underscoreSafe lets onegit reach S3 at a host name with an underscore, such
+// as a Docker Swarm service (infra_minio): MinIO rejects such a Host header as
+// an invalid hostname. The client gets the name with hyphens instead, and its
+// transport dials the real name, resolved anew on every connection so that a
+// changed service address is picked up.
+func underscoreSafe(endpoint string, opts *minio.Options) (string, error) {
+	host, port, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		host, port = endpoint, ""
+	}
+	if !strings.Contains(host, "_") {
+		return endpoint, nil
+	}
+	alias := strings.ReplaceAll(host, "_", "-")
+	tr, err := minio.DefaultTransport(opts.Secure)
+	if err != nil {
+		return "", err
+	}
+	dial := tr.DialContext
+	tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if h, p, err := net.SplitHostPort(addr); err == nil && h == alias {
+			addr = net.JoinHostPort(host, p)
+		}
+		return dial(ctx, network, addr)
+	}
+	opts.Transport = tr
+	if port == "" {
+		return alias, nil
+	}
+	return net.JoinHostPort(alias, port), nil
 }
 
 func (s *Store) Ping(ctx context.Context) error {

@@ -30,7 +30,7 @@ variables win over the file.
 | `ONEGIT_DATABASE_MAX_CONNS` | `10` | Pool size per replica |
 | `ONEGIT_REDIS_URL` | required | `redis://[:password@]host:6379/0` (`rediss://` for TLS) |
 | `ONEGIT_REDIS_KEY_PREFIX` | `onegit:` | Namespace for all keys; lets several installations share a Redis database |
-| `ONEGIT_S3_ENDPOINT` | required | `https://s3.amazonaws.com`, `https://<account>.r2.cloudflarestorage.com`, `http://minio:9000`, ... |
+| `ONEGIT_S3_ENDPOINT` | required | `https://s3.amazonaws.com`, `https://<account>.r2.cloudflarestorage.com`, `http://minio:9000`, ... A host with an underscore (a Swarm service such as `infra_minio`) works too |
 | `ONEGIT_S3_BUCKET` | required | |
 | `ONEGIT_S3_ACCESS_KEY`, `ONEGIT_S3_SECRET_KEY` | | |
 | `ONEGIT_S3_REGION` | `us-east-1` | |

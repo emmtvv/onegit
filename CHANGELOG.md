@@ -7,6 +7,14 @@ include breaking changes, always described here.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-28
+
+### Fixed
+
+- MinIO answered `400 Bad Request` at startup when `ONEGIT_S3_ENDPOINT`
+  named a host with an underscore: it rejects such a Host header. onegit now
+  sends the name with hyphens and still connects to the real host.
+
 ## [1.0.1] - 2026-09-28
 
 ### Changed
@@ -66,6 +74,7 @@ First public release.
   amd64 and arm64, `docker-compose.yml` with the full stack, admin CLI
   (`list-users`, `reset-password`, `registry-gc`).
 
-[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/emmtvv/onegit/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/emmtvv/onegit/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/emmtvv/onegit/releases/tag/v1.0.0
