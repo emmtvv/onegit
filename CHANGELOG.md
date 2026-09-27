@@ -7,7 +7,7 @@ include breaking changes, always described here.
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-09-27
+## [1.0.0] - 2026-09-27
 
 First public release.
 
@@ -52,5 +52,5 @@ First public release.
   amd64 and arm64, `docker-compose.yml` with the full stack, admin CLI
   (`list-users`, `reset-password`, `registry-gc`).
 
-[Unreleased]: https://github.com/emmtvv/onegit/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/emmtvv/onegit/releases/tag/v0.1.0
+[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/emmtvv/onegit/releases/tag/v1.0.0
