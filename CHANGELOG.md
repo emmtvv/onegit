@@ -7,6 +7,18 @@ include breaking changes, always described here.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-04
+
+### Fixed
+
+- The deployment page now refreshes itself while the deployment is pending
+  or running, so its status, jobs and reviews no longer stay as they were
+  when the page was opened.
+
+### Removed
+
+- The table of last deployed versions per target on the Deployments page.
+
 ## [1.1.0] - 2026-09-28
 
 ### Fixed
@@ -74,7 +86,8 @@ First public release.
   amd64 and arm64, `docker-compose.yml` with the full stack, admin CLI
   (`list-users`, `reset-password`, `registry-gc`).
 
-[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/emmtvv/onegit/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/emmtvv/onegit/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/emmtvv/onegit/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/emmtvv/onegit/releases/tag/v1.0.0
