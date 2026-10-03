@@ -487,7 +487,6 @@ form.inline { display: inline; }
 .job-log .log-line { padding: 0 16px; white-space: pre-wrap; word-break: break-all; min-height: 1.5em; }
 .job-log .log-step { padding: 6px 16px; margin-top: 8px; color: #8ca1ff; font-weight: 600; border-top: 1px solid #262b40; }
 .job-log .log-step:first-child { margin-top: 0; border-top: 0; }
-.deploy-matrix td { white-space: nowrap; }
 .deploy-dims { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
 .deploy-dims fieldset { border: 1px solid var(--border); border-radius: 12px; background: var(--bg); padding: 8px 12px; margin: 0; min-width: 200px; flex: 1; }
 .deploy-dims legend { font-weight: 600; padding: 0 4px; }

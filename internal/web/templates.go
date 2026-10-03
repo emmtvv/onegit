@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"onegit/internal/deploy"
 	"onegit/internal/git"
 	"onegit/internal/store"
 )
@@ -118,9 +117,6 @@ var funcs = template.FuncMap{
 			return "PR #" + strings.TrimSuffix(n, "/head")
 		}
 		return ref
-	},
-	"targetlabel": func(t map[string]string, dims []*store.DeployDimension) string {
-		return deploy.Target(t).Label(dims)
 	},
 	"deint": func(p *int) int { return *p },
 	"parentdir": func(p string) string {

@@ -4,20 +4,12 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 
 	"onegit/internal/deploy"
 	"onegit/internal/store"
 )
-
-// deployCell is one target in the overview.
-type deployCell struct {
-	Target deploy.Target
-	Key    string
-	Last   *store.TargetDeploy
-}
 
 func (w *Web) deployOverview(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -26,44 +18,7 @@ func (w *Web) deployOverview(rw http.ResponseWriter, r *http.Request) {
 		w.serverError(rw, r, err)
 		return
 	}
-	latest, err := w.Store.LatestDeploys(ctx)
-	if err != nil {
-		w.serverError(rw, r, err)
-		return
-	}
-	byKey := map[string]*store.TargetDeploy{}
-	for _, d := range latest {
-		byKey[d.TargetKey] = d
-	}
 	data := map[string]any{"Dims": dims}
-
-	// Two dimensions (e.g. project × environment): a matrix. Otherwise a list
-	// of targets that have been deployed.
-	if len(dims) == 2 {
-		values := w.Deploy.DimensionValues(ctx, dims, w.recipeSHA(r))
-		rows, cols := values[dims[0].Name], values[dims[1].Name]
-		type row struct {
-			Value string
-			Cells []deployCell
-		}
-		var matrix []row
-		for _, rv := range rows {
-			rr := row{Value: rv}
-			for _, cv := range cols {
-				t := deploy.Target{dims[0].Name: rv, dims[1].Name: cv}
-				rr.Cells = append(rr.Cells, deployCell{Target: t, Key: t.Key(), Last: byKey[t.Key()]})
-			}
-			matrix = append(matrix, rr)
-		}
-		data["Matrix"], data["Cols"] = matrix, cols
-	} else {
-		var cells []deployCell
-		for _, d := range latest {
-			cells = append(cells, deployCell{Target: d.Target, Key: d.TargetKey, Last: d})
-		}
-		sort.Slice(cells, func(i, j int) bool { return cells[i].Target.Label(dims) < cells[j].Target.Label(dims) })
-		data["Cells"] = cells
-	}
 	pending, err := w.Store.ListDeployments(ctx, "pending", 50, 0)
 	if err != nil {
 		w.serverError(rw, r, err)
