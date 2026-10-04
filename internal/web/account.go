@@ -233,15 +233,22 @@ func (w *Web) deleteToken(rw http.ResponseWriter, r *http.Request) {
 
 // ---- admin ----
 
+const usersPerPage = 50
+
 var validUsername = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,38}$`)
 
 func (w *Web) adminUsers(rw http.ResponseWriter, r *http.Request) {
-	users, err := w.Store.ListUsers(r.Context())
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	page = max(page, 1)
+	users, total, err := w.Store.FindUsers(r.Context(), q, usersPerPage, (page-1)*usersPerPage)
 	if err != nil {
 		w.serverError(rw, r, err)
 		return
 	}
-	w.render(rw, r, http.StatusOK, "admin_users", &Page{Title: "Users", Tab: "admin", Data: map[string]any{"Users": users}})
+	w.render(rw, r, http.StatusOK, "admin_users", &Page{Title: "Users", Tab: "admin", Data: map[string]any{
+		"Users": users, "Total": total, "Q": q, "Page": page, "HasNext": page*usersPerPage < total,
+	}})
 }
 
 func (w *Web) adminCreateUser(rw http.ResponseWriter, r *http.Request) {

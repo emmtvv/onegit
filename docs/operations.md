@@ -31,6 +31,17 @@ request are serialised with row locks, CI jobs are claimed with
 the database so chunks of one upload may hit different replicas. Sessions
 survive restarts and failovers.
 
+## Repository maintenance
+
+Once an hour one replica (an advisory lock picks it) packs refs, merges
+packs geometrically with a multi-pack bitmap and extends the commit-graph
+with changed-path Bloom filters; once a week it also runs `git gc`, pruning
+unreachable objects older than two weeks. The Bloom filters are what keep
+path history, blame and the tree's last-commit column fast on deep
+histories. git's automatic gc is turned off so pushes never wait for it.
+The first run after an upgrade rewrites the commit-graph and can take a
+while on a large repository.
+
 ## Health checks
 
 - `GET /healthz`: the process is up (liveness). `onegit healthcheck` probes

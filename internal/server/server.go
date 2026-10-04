@@ -189,6 +189,13 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	go s.CI.Janitor(ctx)
 	go s.CI.Maintenance(ctx)
 	go s.Pulls.Background(ctx)
+	go s.repoMaintenanceLoop(ctx)
+	go func() {
+		// Warm the sorted ref lists: the first listing reads every ref.
+		for _, k := range []git.RefKind{git.KindBranch, git.KindTag} {
+			_, _, _ = s.Repo.ListRefs(ctx, k, git.RefQuery{Limit: 1})
+		}
+	}()
 
 	httpSrv := &http.Server{Handler: s.routes(), ReadHeaderTimeout: 30 * time.Second}
 	errc := make(chan error, 1)

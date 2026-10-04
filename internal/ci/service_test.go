@@ -91,6 +91,10 @@ func (e *env) runs(sha string) []*store.Run {
 	e.t.Helper()
 	runs, err := e.st.ListRuns(ctx, store.RunFilter{SHA: sha, Limit: 100})
 	testutil.Must(e.t, err)
+	for i, r := range runs { // reload: lists leave out the changed files
+		runs[i], err = e.st.RunByID(ctx, r.ID)
+		testutil.Must(e.t, err)
+	}
 	return runs
 }
 
@@ -398,7 +402,7 @@ func TestRunnerAPI(t *testing.T) {
 		t.Errorf("log: %d %s", resp.StatusCode, body)
 	}
 	a.post(jobPath("log"), as.Token, ci.LogRequest{Seq: -1}) // heartbeat only
-	if chunks, _ := e.st.LogChunks(ctx, as.ID, -1); len(chunks) != 1 || chunks[0].Data != "hello\n" {
+	if chunks, _ := e.st.LogPage(ctx, as.ID, -1, 100); len(chunks) != 1 || chunks[0].Data != "hello\n" {
 		t.Errorf("chunks = %+v", chunks)
 	}
 	if resp, _ := a.post(jobPath("steps"), as.Token, []store.StepState{{Name: "Run make test", Status: "running"}}); resp.StatusCode != http.StatusNoContent {

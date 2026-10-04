@@ -1,6 +1,6 @@
 {{define "content"}}{{$d := .Data}}{{$ref := $d.Ref.Name}}
 <div class="toolbar">
-  {{template "refpicker" (dict "Ref" $d.Ref "Path" $d.Path "Kind" "commits" "Branches" $d.Branches "Tags" $d.Tags)}}
+  {{template "refpicker" (dict "Ref" $d.Ref "Path" $d.Path "Kind" "commits")}}
   {{if $d.Path}}<span class="muted">History for</span> {{template "breadcrumbs" (dict "Ref" $ref "Path" $d.Path "Repo" .Cfg.Repo.Name)}}{{end}}
 </div>
 {{range $d.Groups}}
@@ -24,7 +24,7 @@
 <div class="box blob-note">No commits found.</div>
 {{end}}
 <div class="pager">
-  {{if gt $d.Page 1}}<a class="btn" href="?page={{sub $d.Page 1}}">Newer</a>{{end}}
-  {{if $d.HasNext}}<a class="btn" href="?page={{add $d.Page 1}}">Older</a>{{end}}
+  {{if gt $d.Page 1}}<a class="btn" href="?page={{sub $d.Page 1}}{{if gt $d.Page 2}}&at={{$d.At}}{{end}}">Newer</a>{{end}}
+  {{if $d.HasNext}}<a class="btn" href="?page={{add $d.Page 1}}&at={{$d.At}}">Older</a>{{end}}
 </div>
 {{end}}

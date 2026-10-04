@@ -1,6 +1,6 @@
 {{define "content"}}{{$d := .Data}}{{$ref := $d.Ref.Name}}
 <div class="toolbar">
-  {{template "refpicker" (dict "Ref" $d.Ref "Path" $d.Path "Kind" "tree" "Branches" $d.Branches "Tags" $d.Tags)}}
+  {{template "refpicker" (dict "Ref" $d.Ref "Path" $d.Path "Kind" "tree")}}
   {{template "breadcrumbs" (dict "Ref" $ref "Path" $d.Path "Repo" .Cfg.Repo.Name)}}
   <span class="spacer"></span>
   {{with $d.Project}}<a class="btn btn-sm" href="/projects/{{pathesc .Name}}" title="Project page">{{template "icon-project"}}{{.Name}}</a>{{end}}

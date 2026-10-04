@@ -59,35 +59,31 @@ func (w *Web) pullList(rw http.ResponseWriter, r *http.Request) {
 	if state != "closed" {
 		state = "open"
 	}
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	page = max(page, 1)
 	project, dir := w.projectDir(r)
-	list, err := w.Store.ListPullsIn(ctx, state, dir, pullsPerPage+1, (page-1)*pullsPerPage)
+	pq := pageQuery(r, pullsPerPage)
+	list, err := w.Store.FindPulls(ctx, store.PullFilter{State: state, Dir: dir, Page: pq})
 	if err != nil {
 		w.fail(rw, r, err)
 		return
 	}
-	hasNext := len(list) > pullsPerPage
-	if hasNext {
-		list = list[:pullsPerPage]
-	}
+	list, pg := paginate(list, pullsPerPage, pq, func(p *store.Pull) int64 { return p.ID })
 	open, closed, err := w.Store.CountPullsIn(ctx, dir)
 	if err != nil {
 		w.fail(rw, r, err)
 		return
 	}
-	queued := map[int64]bool{}
-	if branches, err := w.Store.QueueBranches(ctx); err == nil {
-		for _, b := range branches {
-			entries, _ := w.Store.ActiveQueue(ctx, b)
-			for _, e := range entries {
-				queued[e.PullID] = true
-			}
-		}
+	ids := make([]int64, len(list))
+	for i, p := range list {
+		ids[i] = p.ID
+	}
+	queued, err := w.Store.QueuedPulls(ctx, ids)
+	if err != nil {
+		w.fail(rw, r, err)
+		return
 	}
 	projectList, _, _ := w.Projects.List(ctx)
 	w.render(rw, r, http.StatusOK, "pulls", &Page{Title: "Pull requests · " + w.Cfg.Repo.Name, Tab: "pulls", Data: map[string]any{
-		"Pulls": list, "State": state, "Open": open, "Closed": closed, "Page": page, "HasNext": hasNext,
+		"Pulls": list, "State": state, "Open": open, "Closed": closed, "Pager": pg,
 		"Project": project, "Projects": projectList, "Queued": queued,
 	}})
 }
@@ -105,7 +101,8 @@ func (w *Web) pullNew(rw http.ResponseWriter, r *http.Request) {
 	if base == "" {
 		base = w.defaultBranch(ctx)
 	}
-	branches, err := w.Repo.Branches(ctx)
+	// Suggestions only: any branch can be typed in.
+	branches, _, err := w.Repo.ListRefs(ctx, git.KindBranch, git.RefQuery{Limit: 200})
 	if err != nil {
 		w.fail(rw, r, err)
 		return

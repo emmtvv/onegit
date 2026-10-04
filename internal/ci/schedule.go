@@ -33,7 +33,12 @@ func (s *Service) Maintenance(ctx context.Context) {
 		}
 		if time.Since(lastCleanup) >= cleanupInterval {
 			lastCleanup = time.Now()
-			if _, err := s.Store.TryAdvisoryLock(ctx, cleanupLockID, func() error { return s.cleanupFiles(ctx) }); err != nil && ctx.Err() == nil {
+			if _, err := s.Store.TryAdvisoryLock(ctx, cleanupLockID, func() error {
+				if err := s.pruneLogs(ctx); err != nil {
+					return err
+				}
+				return s.cleanupFiles(ctx)
+			}); err != nil && ctx.Err() == nil {
 				s.Log.Error("ci cleanup", "err", err)
 			}
 		}

@@ -201,6 +201,17 @@ func TestDeployTargetsAreExclusive(t *testing.T) {
 	if len(latest) != 1 || latest[0].JobID != a.ID || latest[0].TargetKey != key {
 		t.Errorf("LatestDeploys = %+v (only successful deploys count)", latest)
 	}
+	if _, _, err := st.FinishJob(ctx, c.ID, store.JobSuccess, ""); err != nil {
+		t.Fatal(err)
+	}
+	latest, _ = st.LatestDeploys(ctx)
+	got := map[string]int64{}
+	for _, d := range latest {
+		got[d.TargetKey] = d.JobID
+	}
+	if len(latest) != 2 || got[key] != a.ID || got[otherKey] != c.ID {
+		t.Errorf("LatestDeploys with two targets = %v", got)
+	}
 	hist, _ := st.TargetHistory(ctx, key, 10)
 	if len(hist) != 2 || hist[0].JobID != b.ID || hist[0].Status != store.JobFailure {
 		t.Errorf("TargetHistory = %+v", hist)
@@ -309,6 +320,20 @@ func TestCancelRun(t *testing.T) {
 	}
 }
 
+func TestPruneLogs(t *testing.T) {
+	t.Parallel()
+	st := newStore(t)
+	job := &store.Job{Name: "j"}
+	newRun(t, st, "pipeline", job)
+	testutil.Must(t, st.AppendLog(ctx, job.ID, 0, "old\n"))
+	if n, err := st.PruneLogs(ctx, time.Now().Add(time.Hour)); n != 1 || err != nil {
+		t.Errorf("PruneLogs(every job) = %d, %v", n, err)
+	}
+	if left, _ := st.LogPage(ctx, job.ID, -1, 10); len(left) != 0 {
+		t.Errorf("left after pruning: %v", left)
+	}
+}
+
 func TestLogsHeartbeatsAndStaleJobs(t *testing.T) {
 	t.Parallel()
 	st := newStore(t)
@@ -321,12 +346,27 @@ func TestLogsHeartbeatsAndStaleJobs(t *testing.T) {
 	testutil.Must(t, st.AppendLog(ctx, job.ID, 0, "line 1\n"))
 	testutil.Must(t, st.AppendLog(ctx, job.ID, 1, "line 2\n"))
 	testutil.Must(t, st.AppendLog(ctx, job.ID, 1, "retry ignored\n"))
-	chunks, _ := st.LogChunks(ctx, job.ID, -1)
-	if len(chunks) != 2 || chunks[1].Data != "line 2\n" {
+	testutil.Must(t, st.AppendLog(ctx, job.ID, 2, "line 3\n"))
+	chunks, _ := st.LogPage(ctx, job.ID, -1, 10)
+	if len(chunks) != 3 || chunks[1].Data != "line 2\n" {
 		t.Errorf("chunks = %+v", chunks)
 	}
-	if after, _ := st.LogChunks(ctx, job.ID, 0); len(after) != 1 {
-		t.Errorf("chunks after 0 = %+v", after)
+	if after, _ := st.LogPage(ctx, job.ID, 0, 1); len(after) != 1 || after[0].Seq != 1 {
+		t.Errorf("one chunk after 0 = %+v", after)
+	}
+	if tail, cut, _ := st.LogTail(ctx, job.ID, 10); !cut || len(tail) != 2 || tail[0].Seq != 1 || tail[1].Seq != 2 {
+		t.Errorf("LogTail(10 bytes) = %+v, cut %v", tail, cut)
+	}
+	if tail, cut, _ := st.LogTail(ctx, job.ID, 1<<20); cut || len(tail) != 3 {
+		t.Errorf("LogTail(1MiB) = %+v, cut %v", tail, cut)
+	}
+	var all strings.Builder
+	testutil.Must(t, st.StreamLog(ctx, job.ID, func(d string) error { all.WriteString(d); return nil }))
+	if all.String() != "line 1\nline 2\nline 3\n" {
+		t.Errorf("StreamLog = %q", all.String())
+	}
+	if n, err := st.PruneLogs(ctx, time.Now().Add(-time.Hour)); n != 0 || err != nil {
+		t.Errorf("PruneLogs(an hour ago) = %d, %v", n, err)
 	}
 	if cancel, err := st.Heartbeat(ctx, job.ID); cancel || err != nil {
 		t.Errorf("Heartbeat = %v, %v", cancel, err)

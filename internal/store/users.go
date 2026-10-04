@@ -125,6 +125,32 @@ func (s *Store) UserByOIDCSubject(ctx context.Context, sub string) (*User, error
 	return scanUser(s.db.QueryRow(ctx, `SELECT `+userCols+` FROM users WHERE oidc_subject=$1`, sub))
 }
 
+// FindUsers lists users whose username, name or email contains q, by
+// username, and counts all matches.
+func (s *Store) FindUsers(ctx context.Context, q string, limit, offset int) ([]*User, int, error) {
+	var total int
+	cond := `($1 = '' OR strpos(lower(username), lower($1)) > 0 OR strpos(lower(full_name), lower($1)) > 0
+		OR strpos(lower(email), lower($1)) > 0)`
+	if err := s.db.QueryRow(ctx, `SELECT count(*) FROM users WHERE `+cond, q).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.db.Query(ctx, `SELECT `+userCols+` FROM users WHERE `+cond+` ORDER BY lower(username) LIMIT $2 OFFSET $3`,
+		q, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var out []*User
+	for rows.Next() {
+		u, err := scanUser(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		out = append(out, u)
+	}
+	return out, total, rows.Err()
+}
+
 func (s *Store) ListUsers(ctx context.Context) ([]*User, error) {
 	rows, err := s.db.Query(ctx, `SELECT `+userCols+` FROM users ORDER BY lower(username)`)
 	if err != nil {

@@ -87,6 +87,8 @@ type Config struct {
 		// used are evicted. Caches unused for CacheRetentionDays go too.
 		MaxCacheSize       string `yaml:"max_cache_size" env:"ONEGIT_CI_MAX_CACHE_SIZE"`
 		CacheRetentionDays int    `yaml:"cache_retention_days" env:"ONEGIT_CI_CACHE_RETENTION_DAYS"`
+		// LogRetentionDays removes job logs older than this; 0 keeps them.
+		LogRetentionDays int `yaml:"log_retention_days" env:"ONEGIT_CI_LOG_RETENTION_DAYS"`
 		// Parsed from the strings above; 0 = unlimited.
 		MaxArtifactBytes int64 `yaml:"-"`
 		MaxCacheBytes    int64 `yaml:"-"`
@@ -221,6 +223,9 @@ func (c *Config) validate() error {
 	}
 	if c.CI.ArtifactRetentionDays <= 0 || c.CI.CacheRetentionDays <= 0 {
 		return fmt.Errorf("ci artifact and cache retention must be at least one day")
+	}
+	if c.CI.LogRetentionDays < 0 {
+		return fmt.Errorf("ci log retention must be 0 (keep) or a number of days")
 	}
 	if c.OIDC.Enabled && (c.OIDC.Issuer == "" || c.OIDC.ClientID == "") {
 		return fmt.Errorf("oidc issuer and client_id are required when oidc is enabled")

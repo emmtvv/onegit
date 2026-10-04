@@ -48,7 +48,12 @@ func Open(ctx context.Context, path, defaultBranch, selfExe string) (*Repo, erro
 		"uploadpack.allowFilter":        "true",
 		"uploadpack.allowAnySHA1InWant": "true",
 		"core.logAllRefUpdates":         "true",
-		"gc.auto":                       "6700",
+		// Housekeeping runs in the background (Maintain), never inside a push.
+		"gc.auto":             "0",
+		"receive.autogc":      "false",
+		"core.commitGraph":    "true",
+		"gc.writeCommitGraph": "false", // Maintain writes it, with Bloom filters
+		"repack.writeBitmaps": "true",
 	} {
 		if _, err := r.run(ctx, nil, "config", k, v); err != nil {
 			return nil, err

@@ -156,10 +156,63 @@ func TestSplitRefPath(t *testing.T) {
 			t.Errorf("SplitRefPath(%q) = %q (%v), %q; want %q (%v), %q", c.in, ref.Name, ref.Kind, p, c.ref, c.kind, c.path)
 		}
 	}
-	for _, in := range []string{"nope/README.md", "abc/x", "zzzzzzz"} {
+	for _, in := range []string{"nope/README.md", "abc/x", "zzzzzzz", "main~1/README.md", "main^/src", "main@{1}"} {
 		if _, _, err := f.repo.SplitRefPath(ctx, in); !errors.Is(err, git.ErrNotExist) {
 			t.Errorf("SplitRefPath(%q) error = %v, want ErrNotExist", in, err)
 		}
+	}
+}
+
+func TestListRefs(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.work.Git("branch", "feature/z")
+	f.work.Push(f.repo, "feature/z")
+
+	all, more, err := f.repo.ListRefs(ctx, git.KindBranch, git.RefQuery{})
+	if err != nil || more || len(all) != 3 {
+		t.Fatalf("ListRefs = %v, %v, %v", all, more, err)
+	}
+	page, more, err := f.repo.ListRefs(ctx, git.KindBranch, git.RefQuery{Query: "FEATURE", Limit: 1})
+	if err != nil || !more || len(page) != 1 || !strings.HasPrefix(page[0].Name, "feature/") {
+		t.Errorf("first page = %v, %v, %v", page, more, err)
+	}
+	next, more, err := f.repo.ListRefs(ctx, git.KindBranch, git.RefQuery{Query: "feature", Offset: 1, Limit: 1})
+	if err != nil || more || len(next) != 1 || next[0].Name == page[0].Name {
+		t.Errorf("second page = %v, %v, %v", next, more, err)
+	}
+	tags, _, err := f.repo.ListRefs(ctx, git.KindTag, git.RefQuery{Limit: 10})
+	if err != nil || len(tags) != 1 || tags[0].SHA != f.c2 {
+		t.Errorf("tags = %v, %v (want v1.0 peeled to %s)", tags, err, f.c2)
+	}
+
+	byName, err := f.repo.RefsByName(ctx, git.KindBranch, []string{"feature", "feature/z", "nope"})
+	if err != nil || len(byName) != 1 || byName["feature/z"].SHA != f.c3 {
+		t.Errorf("RefsByName = %v, %v", byName, err)
+	}
+
+	ab, err := f.repo.AheadBehindMany(ctx, f.c1, []string{"feature/x/y", "main", "nope"})
+	if err != nil || ab["feature/x/y"] != [2]int{3, 0} || ab["main"] != [2]int{2, 0} || len(ab) != 2 {
+		t.Errorf("AheadBehindMany = %v, %v", ab, err)
+	}
+
+	on, err := f.repo.BranchesContaining(ctx, f.featureTip)
+	if err != nil || !slices.Equal(on, []string{"feature/x/y"}) {
+		t.Errorf("BranchesContaining(feature tip) = %v, %v", on, err)
+	}
+	if on, _ := f.repo.BranchesContaining(ctx, f.c1); len(on) != 3 {
+		t.Errorf("BranchesContaining(c1) = %v", on)
+	}
+
+	// The sorted list is cached: new, moved and deleted refs must show.
+	f.work.Git("checkout", "-q", "-b", "fresh")
+	fresh := f.work.Commit("fresh work", map[string]string{"fresh.txt": "x"})
+	f.work.Git("checkout", "-q", "main")
+	f.work.Push(f.repo, "fresh", "+fresh:feature/x/y", ":feature/z")
+	all, _, err = f.repo.ListRefs(ctx, git.KindBranch, git.RefQuery{})
+	if err != nil || len(all) != 3 || all[0].Name != "feature/x/y" && all[0].Name != "fresh" || all[0].SHA != fresh ||
+		all[1].SHA != fresh || all[2].Name != "main" {
+		t.Errorf("after pushes = %+v, %v", all, err)
 	}
 }
 
@@ -617,5 +670,42 @@ func TestRunErrorMessage(t *testing.T) {
 	var re *git.RunError
 	if !errors.As(err, &re) || !strings.Contains(err.Error(), "merge-base") || re.Stderr == "" {
 		t.Errorf("error = %v", err)
+	}
+}
+
+func TestMaintain(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	for range 2 { // the second run skips the weekly gc and must still work
+		if err := f.repo.Maintain(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, p := range []string{"objects/info/commit-graphs/commit-graph-chain", "packed-refs", "onegit-last-gc"} {
+		if _, err := os.Stat(filepath.Join(f.repo.Path, p)); err != nil {
+			t.Errorf("after Maintain: %v", err)
+		}
+	}
+	if c, err := f.repo.LastCommitFor(ctx, "main", "src/util.go"); err != nil || c.SHA != f.c2 {
+		t.Errorf("LastCommitFor after Maintain = %v, %v", c, err)
+	}
+}
+
+func TestMatchDirs(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	sha := f.work.Commit("projects", map[string]string{
+		"services/api/project.yaml": "x", "services/web/main.go": "x", "services/db/project.yaml/x": "dir, not file",
+		"services/file.txt": "not a dir",
+	})
+	f.work.Push(f.repo, "main")
+	if got := f.repo.MatchDirs(ctx, sha, "services/*"); !slices.Equal(got, []string{"api", "db", "web"}) {
+		t.Errorf("services/* = %v", got)
+	}
+	if got := f.repo.MatchDirs(ctx, sha, "services/*/project.yaml"); !slices.Equal(got, []string{"api", "db"}) {
+		t.Errorf("services/*/project.yaml = %v", got)
+	}
+	if got := f.repo.MatchDirs(ctx, sha, "nope/*"); got != nil {
+		t.Errorf("nope/* = %v", got)
 	}
 }

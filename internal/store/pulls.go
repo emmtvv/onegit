@@ -36,9 +36,8 @@ type Pull struct {
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 
-	// ChangedFiles as of FilesSHA (the head they were computed for).
-	ChangedFiles []string
-	FilesSHA     string
+	// FilesSHA is the head the changed files (pull_dirs) were computed for.
+	FilesSHA string
 	// Auto-merge: set while enabled; the PR merges (or joins the merge
 	// queue) as AutoMergeBy once every requirement is met.
 	AutoMergeBy           *int64
@@ -63,7 +62,7 @@ func (p *Pull) IsAuthor(u *User) bool {
 
 const pullCols = `p.id, p.title, p.body, p.author_id, p.head_branch, p.base_branch, p.head_sha, p.merge_base, p.state,
 	p.merge_sha, p.merge_style, p.merged_by, p.merged_at, p.closed_at, p.created_at, p.updated_at,
-	p.changed_files, p.files_sha, p.auto_merge_by, p.auto_merge_style, p.auto_merge_title, p.auto_merge_message,
+	p.files_sha, p.auto_merge_by, p.auto_merge_style, p.auto_merge_title, p.auto_merge_message,
 	p.auto_merge_delete_branch,
 	COALESCE(a.username, 'ghost'), COALESCE(a.email, ''), COALESCE(m.username, 'ghost'), COALESCE(am.username, 'ghost')`
 
@@ -74,7 +73,7 @@ func scanPull(row pgx.Row) (*Pull, error) {
 	var p Pull
 	err := row.Scan(&p.ID, &p.Title, &p.Body, &p.AuthorID, &p.HeadBranch, &p.BaseBranch, &p.HeadSHA, &p.MergeBase, &p.State,
 		&p.MergeSHA, &p.MergeStyle, &p.MergedBy, &p.MergedAt, &p.ClosedAt, &p.CreatedAt, &p.UpdatedAt,
-		&p.ChangedFiles, &p.FilesSHA, &p.AutoMergeBy, &p.AutoMergeStyle, &p.AutoMergeTitle, &p.AutoMergeMessage,
+		&p.FilesSHA, &p.AutoMergeBy, &p.AutoMergeStyle, &p.AutoMergeTitle, &p.AutoMergeMessage,
 		&p.AutoMergeDeleteBranch,
 		&p.AuthorName, &p.AuthorEmail, &p.MergedByName, &p.AutoMergeByName)
 	if err != nil {
@@ -122,29 +121,104 @@ func (s *Store) ListPulls(ctx context.Context, state string, limit, offset int) 
 	return s.ListPullsIn(ctx, state, "", limit, offset)
 }
 
-// touchesDir matches PRs that change a file under dir (a "dir/" prefix);
-// $1 is the prefix, ” matching every PR.
-const touchesDir = `($1 = '' OR EXISTS (SELECT 1 FROM unnest(p.changed_files) f WHERE starts_with(f, $1)))`
-
 // ListPullsIn lists PRs by state that change files under dir ("" = all).
 func (s *Store) ListPullsIn(ctx context.Context, state, dir string, limit, offset int) ([]*Pull, error) {
-	cond := `p.state = 'open'`
-	if state == "closed" {
-		cond = `p.state <> 'open'`
+	return s.FindPulls(ctx, PullFilter{State: state, Dir: dir, Page: Page{Limit: limit, Offset: offset}})
+}
+
+type PullFilter struct {
+	State string // "open", or "closed" meaning closed+merged
+	Dir   string // PRs that change files under Dir
+	Page
+}
+
+// FindPulls lists PRs newest first.
+func (s *Store) FindPulls(ctx context.Context, f PullFilter) ([]*Pull, error) {
+	var w where
+	if f.State == "closed" {
+		w.add(`p.state <> 'open'`)
+	} else {
+		w.add(`p.state = 'open'`)
 	}
-	return collectPulls(s.db.Query(ctx,
-		`SELECT `+pullCols+pullFrom+`WHERE `+cond+` AND `+touchesDir+` ORDER BY p.id DESC LIMIT $2 OFFSET $3`, dirPrefix(dir), limit, offset))
+	w.touchesDir(f.Dir, "p", "pull_dirs", "pull_id")
+	tail := f.apply(&w, "p.id")
+	list, err := collectPulls(s.db.Query(ctx, `SELECT `+pullCols+pullFrom+w.sql()+tail, w.args...))
+	return newestFirst(f.Page, list), err
+}
+
+// PullCountCap bounds pull request counts: counting every closed PR of a
+// busy repository on each page view is not worth it.
+const PullCountCap = 10000
+
+// CountOpenPulls counts open PRs, up to PullCountCap+1.
+func (s *Store) CountOpenPulls(ctx context.Context) (n int, err error) {
+	err = s.db.QueryRow(ctx, `SELECT count(*) FROM (SELECT 1 FROM pulls WHERE state = 'open' LIMIT $1) c`, PullCountCap+1).Scan(&n)
+	return n, err
 }
 
 func (s *Store) CountPulls(ctx context.Context) (open, closed int, err error) {
 	return s.CountPullsIn(ctx, "")
 }
 
+// CountPullsIn counts open and closed PRs that change files under dir, each
+// up to PullCountCap+1.
 func (s *Store) CountPullsIn(ctx context.Context, dir string) (open, closed int, err error) {
-	err = s.db.QueryRow(ctx,
-		`SELECT count(*) FILTER (WHERE state = 'open'), count(*) FILTER (WHERE state <> 'open') FROM pulls p WHERE `+touchesDir,
-		dirPrefix(dir)).Scan(&open, &closed)
-	return
+	for _, c := range []struct {
+		state string
+		n     *int
+	}{{"open", &open}, {"closed", &closed}} {
+		var w where
+		if c.state == "closed" {
+			w.add(`p.state <> 'open'`)
+		} else {
+			w.add(`p.state = 'open'`)
+		}
+		w.touchesDir(dir, "p", "pull_dirs", "pull_id")
+		q := `SELECT count(*) FROM (SELECT 1 FROM pulls p` + w.sql() + ` LIMIT ` + w.arg(PullCountCap+1) + `) c`
+		if err = s.db.QueryRow(ctx, q, w.args...).Scan(c.n); err != nil {
+			return 0, 0, err
+		}
+	}
+	return open, closed, nil
+}
+
+// OpenPullCountsIn counts open PRs per directory, for many directories in
+// one query.
+func (s *Store) OpenPullCountsIn(ctx context.Context, dirs []string) (map[string]int, error) {
+	out := make(map[string]int, len(dirs))
+	var shallow []string
+	for _, d := range dirs {
+		if p := dirPrefix(d); p != "" && strings.Count(p, "/") <= maxDirDepth {
+			shallow = append(shallow, p)
+			continue
+		}
+		n, _, err := s.CountPullsIn(ctx, d)
+		if err != nil {
+			return nil, err
+		}
+		out[d] = n
+	}
+	rows, err := s.db.Query(ctx, `SELECT d.dir, count(*)::int FROM pull_dirs d JOIN pulls p ON p.id = d.pull_id
+		WHERE d.dir = ANY($1) AND p.state = 'open' GROUP BY d.dir`, shallow)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	byPrefix := map[string]int{}
+	for rows.Next() {
+		var dir string
+		var n int
+		if err := rows.Scan(&dir, &n); err != nil {
+			return nil, err
+		}
+		byPrefix[dir] = n
+	}
+	for _, d := range dirs {
+		if p := dirPrefix(d); p != "" && strings.Count(p, "/") <= maxDirDepth {
+			out[d] = byPrefix[p]
+		}
+	}
+	return out, rows.Err()
 }
 
 func dirPrefix(dir string) string {
@@ -159,8 +233,16 @@ func (s *Store) SetPullFiles(ctx context.Context, id int64, files []string, sha 
 	if files == nil {
 		files = []string{}
 	}
-	_, err := s.db.Exec(ctx, `UPDATE pulls SET changed_files = $2, files_sha = $3 WHERE id = $1`, id, files, sha)
-	return err
+	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `UPDATE pulls SET changed_files = $2, files_sha = $3 WHERE id = $1`, id, files, sha); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM pull_dirs WHERE pull_id = $1`, id); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `INSERT INTO pull_dirs (dir, pull_id) SELECT unnest($2::text[]), $1::bigint`, id, dirsOf(files))
+		return err
+	})
 }
 
 // PullsNeedingFiles lists PRs whose changed files are not computed for
@@ -181,9 +263,9 @@ func (s *Store) OpenPullsForBranch(ctx context.Context, branch string) ([]*Pull,
 		`SELECT `+pullCols+pullFrom+`WHERE p.state = 'open' AND (p.head_branch = $1 OR p.base_branch = $1) ORDER BY p.id`, branch))
 }
 
-// OpenPullsByHead maps head branch name to its open PRs.
-func (s *Store) OpenPullsByHead(ctx context.Context) (map[string][]*Pull, error) {
-	list, err := collectPulls(s.db.Query(ctx, `SELECT `+pullCols+pullFrom+`WHERE p.state = 'open' ORDER BY p.id`))
+// OpenPullsByHead maps each of the given head branches to its open PRs.
+func (s *Store) OpenPullsByHead(ctx context.Context, heads []string) (map[string][]*Pull, error) {
+	list, err := collectPulls(s.db.Query(ctx, `SELECT `+pullCols+pullFrom+`WHERE p.state = 'open' AND p.head_branch = ANY($1) ORDER BY p.id`, heads))
 	if err != nil {
 		return nil, err
 	}

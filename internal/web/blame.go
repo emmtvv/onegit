@@ -70,6 +70,11 @@ func (w *Web) blameHunks(ctx context.Context, commit, p string) ([]*git.BlameHun
 	if ok, err := w.KV.GetJSON(ctx, key, &cached); ok && err == nil {
 		return cached, nil
 	}
+	release, err := w.acquireHeavy(ctx, heavyWait)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	bctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	hunks, err := w.Repo.Blame(bctx, commit, p)

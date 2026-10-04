@@ -2,8 +2,8 @@
 <div id="queue" data-live="{{if $d.Queues}}run{{else}}watch{{end}}">
 <div class="toolbar">
   <div class="btn-group">
-    <a class="btn" href="/pulls">{{template "icon-pr"}}{{$d.Open}} Open</a>
-    <a class="btn" href="/pulls?state=closed">{{template "icon-check"}}{{$d.Closed}} Closed</a>
+    <a class="btn" href="/pulls">{{template "icon-pr"}}{{capcount $d.Open}} Open</a>
+    <a class="btn" href="/pulls?state=closed">{{template "icon-check"}}{{capcount $d.Closed}} Closed</a>
     <a class="btn active" href="/pulls/queue">{{template "icon-queue"}}Merge queue</a>
   </div>
 </div>

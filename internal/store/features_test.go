@@ -151,3 +151,81 @@ func TestSettingsAndDirFilters(t *testing.T) {
 		t.Errorf("ref filter: %d", len(runs))
 	}
 }
+
+func TestRunAndPullPaging(t *testing.T) {
+	t.Parallel()
+	st := newStore(t)
+	sha := strings.Repeat("c", 40)
+	var ids []int64
+	for i := range 5 {
+		files := []string{"services/api/x.go"}
+		if i%2 == 1 {
+			files = []string{"a/b/c/d/e/f/g/deep.go", "README.md"}
+		}
+		r := &store.Run{Kind: "pipeline", Name: "p", Event: "push", Ref: "refs/heads/main", SHA: sha, Status: store.JobQueued, ChangedFiles: files}
+		testutil.Must(t, st.CreateRun(ctx, r, nil))
+		ids = append(ids, r.ID)
+	}
+	idsOf := func(runs []*store.Run) []int64 {
+		var out []int64
+		for _, r := range runs {
+			out = append(out, r.ID)
+			if r.ChangedFiles != nil {
+				t.Errorf("listed run %d has changed files", r.ID)
+			}
+		}
+		return out
+	}
+	list := func(f store.RunFilter) []int64 {
+		runs, err := st.ListRuns(ctx, f)
+		testutil.Must(t, err)
+		return idsOf(runs)
+	}
+	if got := list(store.RunFilter{Limit: 2}); !slices.Equal(got, []int64{ids[4], ids[3]}) {
+		t.Errorf("first page = %v", got)
+	}
+	if got := list(store.RunFilter{Limit: 2, Before: ids[3]}); !slices.Equal(got, []int64{ids[2], ids[1]}) {
+		t.Errorf("older page = %v", got)
+	}
+	if got := list(store.RunFilter{Limit: 2, After: ids[1]}); !slices.Equal(got, []int64{ids[3], ids[2]}) {
+		t.Errorf("newer page = %v (newest first)", got)
+	}
+	for dir, want := range map[string][]int64{
+		"services":              {ids[4], ids[2], ids[0]},
+		"services/api/":         {ids[4], ids[2], ids[0]},
+		"a/b/c/d/e/f":           {ids[3], ids[1]}, // deepest indexed level
+		"a/b/c/d/e/f/g":         {ids[3], ids[1]}, // deeper: scans changed_files
+		"a/b/c/d/e/f/g/h":       nil,
+		"services/api/x.go/foo": nil,
+	} {
+		if got := list(store.RunFilter{Dir: dir, Limit: 10}); !slices.Equal(got, want) {
+			t.Errorf("runs in %q = %v, want %v", dir, got, want)
+		}
+	}
+	if run, _ := st.RunByID(ctx, ids[1]); len(run.ChangedFiles) != 2 {
+		t.Errorf("RunByID changed files = %v", run.ChangedFiles)
+	}
+
+	last, err := st.LastRunsIn(ctx, "pipeline", "refs/heads/main", []string{"services/api", "a/b/c/d/e/f/g", "docs"})
+	if err != nil || len(last) != 2 || last["services/api"].ID != ids[4] || last["a/b/c/d/e/f/g"].ID != ids[3] {
+		t.Errorf("LastRunsIn = %v, %v", last, err)
+	}
+	if last, _ := st.LastRunsIn(ctx, "pipeline", "refs/heads/dev", []string{"services/api"}); len(last) != 0 {
+		t.Errorf("LastRunsIn(dev) = %v", last)
+	}
+
+	// Pull requests: files can change with the head, and so do their dirs.
+	p := &store.Pull{Title: "t", HeadBranch: "h", BaseBranch: "main", HeadSHA: sha, MergeBase: sha}
+	testutil.Must(t, st.CreatePull(ctx, p))
+	testutil.Must(t, st.SetPullFiles(ctx, p.ID, []string{"services/api/x.go"}, sha))
+	testutil.Must(t, st.SetPullFiles(ctx, p.ID, []string{"docs/x.md"}, sha))
+	for dir, want := range map[string]int{"services": 0, "docs": 1} {
+		if got, _ := st.FindPulls(ctx, store.PullFilter{State: "open", Dir: dir, Page: store.Page{Limit: 10}}); len(got) != want {
+			t.Errorf("PRs in %s = %d, want %d", dir, len(got), want)
+		}
+	}
+	if counts, err := st.OpenPullCountsIn(ctx, []string{"docs", "services", "a/b/c/d/e/f/g/h"}); err != nil ||
+		counts["docs"] != 1 || counts["services"] != 0 || len(counts) != 3 {
+		t.Errorf("OpenPullCountsIn = %v, %v", counts, err)
+	}
+}

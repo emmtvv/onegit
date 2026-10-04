@@ -13,7 +13,13 @@ import (
 	"onegit/internal/store"
 )
 
-const runsPerPage = 30
+const (
+	runsPerPage   = 30
+	logTailBytes  = 256 << 10 // log shown when a job page opens
+	logPollChunks = 500       // most chunks one live log poll returns
+	// changedFilesShown caps the changed files listed on a run page.
+	changedFilesShown = 200
+)
 
 type runView struct {
 	*store.Run
@@ -22,20 +28,18 @@ type runView struct {
 
 func (w *Web) actions(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	page = max(page, 1)
 	kind := r.URL.Query().Get("kind")
 	if kind != "deploy" {
 		kind = "pipeline"
 	}
 	project, dir := w.projectDir(r)
-	runs, err := w.Store.ListRuns(ctx, store.RunFilter{Kind: kind, Dir: dir, Limit: runsPerPage + 1, Offset: (page - 1) * runsPerPage})
+	pq := pageQuery(r, runsPerPage)
+	runs, err := w.Store.ListRuns(ctx, store.RunFilter{Kind: kind, Dir: dir, Limit: pq.Limit, Before: pq.Before, After: pq.After})
 	if err != nil {
 		w.serverError(rw, r, err)
 		return
 	}
-	hasNext := len(runs) > runsPerPage
-	runs = runs[:min(len(runs), runsPerPage)]
+	runs, pg := paginate(runs, runsPerPage, pq, func(r *store.Run) int64 { return r.ID })
 	views := make([]runView, len(runs))
 	for i, run := range runs {
 		views[i].Run = run
@@ -54,12 +58,12 @@ func (w *Web) actions(rw http.ResponseWriter, r *http.Request) {
 		sort.Strings(manual)
 	}
 	var schedules []ci.Schedule
-	if kind == "pipeline" && page == 1 && project == "" {
+	if kind == "pipeline" && pg.First && project == "" {
 		schedules = w.CI.Schedules(ctx)
 	}
 	projectList, _, _ := w.Projects.List(ctx)
 	w.render(rw, r, http.StatusOK, "actions", &Page{Title: "Actions", Tab: "actions", Data: map[string]any{
-		"Runs": views, "Page": page, "HasNext": hasNext, "Kind": kind, "Manual": manual, "Branch": branch,
+		"Runs": views, "Pager": pg, "Kind": kind, "Manual": manual, "Branch": branch,
 		"CanWrite": currentUser(r).CanWrite(), "Schedules": schedules, "Project": project, "Projects": projectList,
 	}})
 }
@@ -83,6 +87,7 @@ func (w *Web) runPage(rw http.ResponseWriter, r *http.Request) {
 	}
 	w.render(rw, r, http.StatusOK, "run", &Page{Title: run.Name + " #" + strconv.FormatInt(run.ID, 10), Tab: "actions", Data: map[string]any{
 		"Run": run, "Jobs": jobs, "CanWrite": currentUser(r).CanWrite(), "Artifacts": artifacts,
+		"Changed": run.ChangedFiles[:min(len(run.ChangedFiles), changedFilesShown)],
 	}})
 }
 
@@ -127,7 +132,18 @@ func (w *Web) jobLog(rw http.ResponseWriter, r *http.Request) {
 		http.Error(rw, "not found", http.StatusNotFound)
 		return
 	}
-	chunks, err := w.Store.LogChunks(r.Context(), id, after)
+	// The first request gets the end of the log only, later ones what was
+	// added since, a bounded batch at a time.
+	var chunks []store.LogChunk
+	cut, more := false, false
+	if after < 0 {
+		chunks, cut, err = w.Store.LogTail(r.Context(), id, logTailBytes)
+	} else {
+		chunks, err = w.Store.LogPage(r.Context(), id, after, logPollChunks+1)
+		if more = len(chunks) > logPollChunks; more {
+			chunks = chunks[:logPollChunks]
+		}
+	}
 	if err != nil {
 		http.Error(rw, "internal error", http.StatusInternalServerError)
 		return
@@ -138,23 +154,23 @@ func (w *Web) jobLog(rw http.ResponseWriter, r *http.Request) {
 	rw.Header().Set("Content-Type", "application/json")
 	rw.Header().Set("Cache-Control", "no-store")
 	json.NewEncoder(rw).Encode(map[string]any{
-		"chunks": chunks, "status": job.Status, "steps": job.Steps, "message": job.Message,
-		"done": store.JobTerminal(job.Status), "duration": job.Duration().String(),
+		"chunks": chunks, "cut": cut, "more": more, "status": job.Status, "steps": job.Steps, "message": job.Message,
+		"done": store.JobTerminal(job.Status) && !more, "duration": job.Duration().String(),
 	})
 }
 
 // jobRawLog serves the whole log as text.
 func (w *Web) jobRawLog(rw http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	chunks, err := w.Store.LogChunks(r.Context(), id, -1)
-	if err != nil {
-		w.serverError(rw, r, err)
-		return
-	}
 	rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	rw.Header().Set("Content-Security-Policy", "sandbox")
-	for _, c := range chunks {
-		rw.Write([]byte(c.Data))
+	// Streamed: logs can be far larger than we want to hold in memory.
+	err := w.Store.StreamLog(r.Context(), id, func(data string) error {
+		_, err := io.WriteString(rw, data)
+		return err
+	})
+	if err != nil && r.Context().Err() == nil {
+		w.Log.Warn("stream job log", "job", id, "err", err)
 	}
 }
 

@@ -224,8 +224,7 @@ type evalContext struct {
 	recipeErrs  []error
 	owners      *pulls.CodeOwners
 	statuses    []*store.CommitStatus
-	branches    []git.Ref
-	onBranch    map[string]bool
+	containing  []string // branches whose history has sha, newest first; nil until needed
 }
 
 // Evaluate checks a request. approvals are the verdicts given so far.
@@ -307,7 +306,7 @@ func hasCheck(te *TargetEval, kind string) bool {
 }
 
 func (s *Service) newEvalContext(ctx context.Context, u *store.User, sha, recipeSHA string) (*evalContext, error) {
-	ec := &evalContext{user: u, sha: sha, recipeSHA: recipeSHA, onBranch: map[string]bool{}}
+	ec := &evalContext{user: u, sha: sha, recipeSHA: recipeSHA}
 	var err error
 	if ec.userTeams, err = s.Store.UserTeams(ctx, u.ID); err != nil {
 		return nil, err
@@ -324,9 +323,6 @@ func (s *Service) newEvalContext(ctx context.Context, u *store.User, sha, recipe
 	ec.recipes, ec.recipeErrs = s.CI.LoadRecipes(ctx, recipeSHA)
 	ec.owners = s.codeOwners(ctx, recipeSHA)
 	if ec.statuses, err = s.Store.CommitStatuses(ctx, sha); err != nil {
-		return nil, err
-	}
-	if ec.branches, err = s.Repo.Branches(ctx); err != nil {
 		return nil, err
 	}
 	return ec, nil
@@ -427,17 +423,19 @@ func (s *Service) checkRequirement(ctx context.Context, ec *evalContext, te *Tar
 
 // onAnyBranch returns a branch matching patterns that contains the commit.
 func (s *Service) onAnyBranch(ctx context.Context, ec *evalContext, patterns []string) string {
-	for _, b := range ec.branches {
-		if !ci.MatchAny(patterns, b.Name) {
-			continue
+	if ec.containing == nil {
+		on, err := s.Repo.BranchesContaining(ctx, ec.sha)
+		if err != nil {
+			s.Log.Warn("branches containing commit", "sha", ec.sha, "err", err)
 		}
-		on, cached := ec.onBranch[b.Name]
-		if !cached {
-			on, _ = s.Repo.IsAncestor(ctx, ec.sha, b.SHA)
-			ec.onBranch[b.Name] = on
+		if on == nil {
+			on = []string{} // computed: don't ask again
 		}
-		if on {
-			return b.Name
+		ec.containing = on
+	}
+	for _, b := range ec.containing {
+		if ci.MatchAny(patterns, b) {
+			return b
 		}
 	}
 	return ""

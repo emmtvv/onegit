@@ -1,14 +1,10 @@
-{{/* refpicker: dict "Ref" git.Ref "Path" string "Kind" "tree|commits" "Branches" []Ref "Tags" []Ref */}}
+{{/* refpicker: dict "Ref" git.Ref "Path" string "Kind" "tree|commits". Branches and tags load from /refs when it opens. */}}
 {{define "refpicker"}}
-<details class="dropdown refpicker">
+<details class="dropdown refpicker" data-refs="/refs?view={{.Kind}}&path={{queryesc .Path}}" data-cur="{{.Ref.Name}}" ontoggle="refMenu(this)">
   <summary class="btn btn-sm">{{if eq .Ref.Kind 1}}{{template "icon-tag"}}{{else if eq .Ref.Kind 2}}{{template "icon-commit"}}{{else}}{{template "icon-branch"}}{{end}}<span class="ref-name">{{if eq .Ref.Kind 2}}{{shortsha .Ref.Name}}{{else}}{{.Ref.Name}}{{end}}</span><span class="caret"></span></summary>
   <div class="menu refmenu">
-    <input class="menu-filter" type="search" placeholder="Filter branches and tags…" oninput="filterMenu(this)" autofocus>
-    <div class="menu-section">Branches</div>
-    {{$kind := .Kind}}{{$path := .Path}}{{$cur := .Ref.Name}}
-    {{range .Branches}}<a class="{{if eq .Name $cur}}selected{{end}}" data-name="{{.Name}}" href="/{{$kind}}/{{pathesc .Name $path}}">{{.Name}}</a>{{end}}
-    {{if .Tags}}<div class="menu-section">Tags</div>
-    {{range .Tags}}<a class="{{if eq .Name $cur}}selected{{end}}" data-name="{{.Name}}" href="/{{$kind}}/{{pathesc .Name $path}}">{{.Name}}</a>{{end}}{{end}}
+    <input class="menu-filter" type="search" placeholder="Filter branches and tags…" oninput="refMenu(this.closest('details'), true)" autofocus>
+    <div class="ref-list"><div class="menu-section">Loading…</div></div>
   </div>
 </details>
 {{end}}
@@ -86,6 +82,7 @@
 <script>
 function copyPrev(btn){const i=btn.previousElementSibling;navigator.clipboard.writeText(i.value);btn.classList.add('ok');setTimeout(()=>btn.classList.remove('ok'),1200)}
 function copyData(btn){navigator.clipboard.writeText(btn.dataset.copy);btn.classList.add('ok');setTimeout(()=>btn.classList.remove('ok'),1200)}
+function refMenu(d,typed){if(!d.open)return;clearTimeout(d._t);d._t=setTimeout(async()=>{const q=d.querySelector('.menu-filter').value;let j;try{j=await(await fetch(d.dataset.refs+'&q='+encodeURIComponent(q))).json()}catch(e){return}if(d.querySelector('.menu-filter').value!==q)return;const list=d.querySelector('.ref-list');list.textContent='';const sec=(t,refs)=>{if(!refs.length)return;const h=document.createElement('div');h.className='menu-section';h.textContent=t;list.appendChild(h);refs.forEach(r=>{const a=document.createElement('a');a.href=r.href;a.textContent=r.name;if(r.name===d.dataset.cur)a.className='selected';list.appendChild(a)})};sec('Branches',j.branches);sec('Tags',j.tags);if(!j.branches.length&&!j.tags.length){const h=document.createElement('div');h.className='menu-section';h.textContent='Nothing found';list.appendChild(h)}if(j.more){const h=document.createElement('div');h.className='menu-section';h.textContent='Type to see more';list.appendChild(h)}},typed?150:0)}
 function filterMenu(inp){const q=inp.value.toLowerCase();inp.parentElement.querySelectorAll('a[data-name]').forEach(a=>{a.hidden=!a.dataset.name.toLowerCase().includes(q)})}
 document.addEventListener('click',e=>{document.querySelectorAll('details.dropdown[open]').forEach(d=>{if(!d.contains(e.target))d.removeAttribute('open')})});
 // Live regions: elements with an id and data-live are re-fetched from the

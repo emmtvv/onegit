@@ -125,6 +125,12 @@ func TestUsers(t *testing.T) {
 	if len(users) != 2 || users[0].Username != "admin" || users[1].Username != "Alice" {
 		t.Errorf("ListUsers = %v", users)
 	}
+	if found, total, _ := st.FindUsers(ctx, "ALI", 10, 0); total != 1 || len(found) != 1 || found[0].Username != "Alice" {
+		t.Errorf("FindUsers(ALI) = %v, %d", found, total)
+	}
+	if found, total, _ := st.FindUsers(ctx, "", 1, 1); total != 2 || len(found) != 1 || found[0].Username != "Alice" {
+		t.Errorf("FindUsers second page = %v, %d", found, total)
+	}
 	byLogin, _ := st.UsersByLogin(ctx, []string{"admin"}, []string{"alice@example.com"})
 	if len(byLogin) != 2 {
 		t.Errorf("UsersByLogin = %d users", len(byLogin))
@@ -212,7 +218,7 @@ func TestPullsStore(t *testing.T) {
 			t.Errorf("OpenPullsForBranch(%s) = %d", b, len(list))
 		}
 	}
-	if byHead, _ := st.OpenPullsByHead(ctx); len(byHead["feat"]) != 1 {
+	if byHead, _ := st.OpenPullsByHead(ctx, []string{"feat", "other"}); len(byHead["feat"]) != 1 || len(byHead) != 1 {
 		t.Errorf("OpenPullsByHead = %v", byHead)
 	}
 

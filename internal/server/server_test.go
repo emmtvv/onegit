@@ -82,6 +82,9 @@ func TestBootstrapAndAccounts(t *testing.T) {
 	// Users, roles and admin-only pages.
 	dev := h.createUser(b, "dev", "write")
 	b.ok("/admin/users", "dev", "admin")
+	if body := b.ok("/admin/users?q=DE", "dev", "1 found"); strings.Contains(body, `href="/admin/users/1"`) {
+		t.Errorf("user search shows admin:\n%.500s", body)
+	}
 	if p := b.post("/admin/users", "username", "dev", "role", "read"); !strings.Contains(p.header.Get("Set-Cookie"), "taken") {
 		t.Errorf("duplicate user: %v", p.header)
 	}
@@ -216,7 +219,15 @@ func TestGitPushPolicyAndPullRequests(t *testing.T) {
 	dev.ok("/commits/main/docs", "init")
 	dev.ok("/commit/"+sha, "README.md")
 	dev.ok("/branches", "feature/login")
+	dev.ok("/branches?q=LOGIN", "feature/login")
+	if body := dev.ok("/branches?q=nomatch"); strings.Contains(body, "feature/login") || !strings.Contains(body, "No branches match") {
+		t.Errorf("filtered branches:\n%.500s", body)
+	}
 	dev.ok("/tags", "v1.0")
+	dev.ok("/refs?view=commits&path=src&q=log", `"name":"feature/login"`, `"href":"/commits/feature/login/src"`)
+	if body := dev.ok("/refs?q=v1"); !strings.Contains(body, `"tags":[{"name":"v1.0","href":"/tree/v1.0"}]`) || !strings.Contains(body, `"branches":[]`) {
+		t.Errorf("refs: %s", body)
+	}
 	raw := dev.get("/raw/main/README.md")
 	if raw.status != http.StatusOK || !strings.HasPrefix(raw.header.Get("Content-Type"), "text/plain") ||
 		!strings.Contains(raw.header.Get("Content-Security-Policy"), "sandbox") || !strings.Contains(raw.body, "Hello") {
@@ -357,6 +368,10 @@ func TestRegistryAndPackagesUI(t *testing.T) {
 		t.Fatalf("manifest: %d", r.StatusCode)
 	}
 	admin.ok("/packages", "team/app")
+	admin.ok("/packages?q=APP", "team/app", "<td>1</td>", "42 B")
+	if body := admin.ok("/packages?q=nope"); strings.Contains(body, "team/app") || !strings.Contains(body, "No images match") {
+		t.Errorf("filtered packages:\n%.300s", body)
+	}
 	admin.ok("/packages/team/app", "1.0")
 	admin.ok("/packages/team/app/-/1.0", "linux/amd64", "team/app@"+digest([]byte(manifest)))
 	admin.ok("/admin/packages")

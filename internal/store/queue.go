@@ -75,6 +75,17 @@ func (s *Store) QueueBranches(ctx context.Context) ([]string, error) {
 	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
+// QueuedPulls reports which of the PRs are in a merge queue.
+func (s *Store) QueuedPulls(ctx context.Context, ids []int64) (map[int64]bool, error) {
+	rows, _ := s.db.Query(ctx, `SELECT pull_id FROM merge_queue WHERE pull_id = ANY($1) AND state IN ('queued', 'testing')`, ids)
+	list, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	out := make(map[int64]bool, len(list))
+	for _, id := range list {
+		out[id] = true
+	}
+	return out, err
+}
+
 // ActiveQueueEntry returns the PR's active entry.
 func (s *Store) ActiveQueueEntry(ctx context.Context, pullID int64) (*QueueEntry, error) {
 	rows, _ := s.db.Query(ctx, `SELECT `+queueCols+queueFrom+`WHERE q.pull_id = $1 AND q.state IN ('queued', 'testing')`, pullID)

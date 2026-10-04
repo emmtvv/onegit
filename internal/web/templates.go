@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -48,18 +49,25 @@ func loadTemplates() (map[string]*templateSet, error) {
 }
 
 var funcs = template.FuncMap{
-	"ago":        timeAgo,
-	"date":       func(t time.Time) string { return t.Format("Jan 2, 2006") },
-	"datetime":   func(t time.Time) string { return t.Format("2006-01-02 15:04:05 -0700") },
-	"shortsha":   func(s string) string { return s[:min(len(s), 10)] },
-	"bytes":      humanBytes,
-	"pathesc":    pathEscape,
-	"queryesc":   url.QueryEscape,
-	"crumbs":     crumbs,
-	"avatar":     avatar,
-	"fileicon":   fileIcon,
-	"diricon":    dirIcon,
-	"add":        func(a, b int) int { return a + b },
+	"ago":      timeAgo,
+	"date":     func(t time.Time) string { return t.Format("Jan 2, 2006") },
+	"datetime": func(t time.Time) string { return t.Format("2006-01-02 15:04:05 -0700") },
+	"shortsha": func(s string) string { return s[:min(len(s), 10)] },
+	"bytes":    humanBytes,
+	"pathesc":  pathEscape,
+	"queryesc": url.QueryEscape,
+	"crumbs":   crumbs,
+	"avatar":   avatar,
+	"fileicon": fileIcon,
+	"diricon":  dirIcon,
+	"add":      func(a, b int) int { return a + b },
+	// capcount shows a count capped at store.PullCountCap as "10000+".
+	"capcount": func(n int) string {
+		if n > store.PullCountCap {
+			return strconv.Itoa(store.PullCountCap) + "+"
+		}
+		return strconv.Itoa(n)
+	},
 	"sub":        func(a, b int) int { return a - b },
 	"linechar":   func(k git.LineKind) string { return string(rune(k)) },
 	"lineclass":  lineClass,

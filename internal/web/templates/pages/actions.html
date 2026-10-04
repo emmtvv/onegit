@@ -24,7 +24,7 @@
 </div>
 {{end}}
 {{$live := "watch"}}{{range $d.Runs}}{{if inflight .Status}}{{$live = "run"}}{{end}}{{range .Jobs}}{{if inflight .Status}}{{$live = "run"}}{{end}}{{end}}{{end}}
-<div class="box" id="runs" data-live="{{if eq $d.Page 1}}{{$live}}{{else if eq $live "run"}}run{{end}}">
+<div class="box" id="runs" data-live="{{if $d.Pager.First}}{{$live}}{{else if eq $live "run"}}run{{end}}">
 {{range $d.Runs}}
   <div class="run-row">
     {{template "status-icon" .Status}}
@@ -39,7 +39,7 @@
 {{end}}
 </div>
 <div class="pager">
-  {{if gt $d.Page 1}}<a class="btn" href="?kind={{$d.Kind}}&project={{$d.Project}}&page={{sub $d.Page 1}}">Newer</a>{{end}}
-  {{if $d.HasNext}}<a class="btn" href="?kind={{$d.Kind}}&project={{$d.Project}}&page={{add $d.Page 1}}">Older</a>{{end}}
+  {{with $d.Pager.Newer}}<a class="btn" href="?kind={{$d.Kind}}&project={{$d.Project}}&after={{.}}">Newer</a>{{end}}
+  {{with $d.Pager.Older}}<a class="btn" href="?kind={{$d.Kind}}&project={{$d.Project}}&before={{.}}">Older</a>{{end}}
 </div>
 {{end}}

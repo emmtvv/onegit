@@ -39,7 +39,7 @@
     <a class="{{if eq .Tab "branches"}}active{{end}}" href="/branches">{{template "icon-branch"}}Branches</a>
     <a class="{{if eq .Tab "tags"}}active{{end}}" href="/tags">{{template "icon-tag"}}Tags</a>
     {{if .Projects}}<a class="{{if eq .Tab "projects"}}active{{end}}" href="/projects">{{template "icon-project"}}Projects</a>{{end}}
-    <a class="{{if eq .Tab "pulls"}}active{{end}}" href="/pulls">{{template "icon-pr"}}Pull requests{{if .OpenPulls}}<span class="counter">{{.OpenPulls}}</span>{{end}}</a>
+    <a class="{{if eq .Tab "pulls"}}active{{end}}" href="/pulls">{{template "icon-pr"}}Pull requests{{if .OpenPulls}}<span class="counter">{{capcount .OpenPulls}}</span>{{end}}</a>
     {{if .Cfg.Registry.Enabled}}<a class="{{if eq .Tab "packages"}}active{{end}}" href="/packages">{{template "icon-package"}}Packages</a>{{end}}
     <a class="{{if eq .Tab "actions"}}active{{end}}" href="/actions">{{template "icon-play"}}Actions</a>
     <a class="{{if eq .Tab "deploy"}}active{{end}}" href="/deploy">{{template "icon-rocket"}}Deployments</a>

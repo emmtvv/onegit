@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"onegit/internal/config"
 	"onegit/internal/git"
@@ -44,6 +45,14 @@ type Service struct {
 	Store *store.Store
 	Repo  *git.Repo
 	Cfg   *config.Config
+
+	mu     sync.Mutex
+	cached listCache // the last listing: projects only change with the default branch
+}
+
+type listCache struct {
+	sha, pattern string
+	names        []string
 }
 
 // Settings returns the configured settings or, without any, the ones
@@ -113,8 +122,17 @@ func (s *Service) List(ctx context.Context) ([]Project, Settings, error) {
 	if err != nil {
 		return nil, st, nil // empty repository
 	}
-	names := s.Repo.MatchDirs(ctx, sha, st.Pattern)
-	sort.Strings(names)
+	s.mu.Lock()
+	c := s.cached
+	s.mu.Unlock()
+	names := c.names
+	if c.sha != sha || c.pattern != st.Pattern {
+		names = s.Repo.MatchDirs(ctx, sha, st.Pattern)
+		sort.Strings(names)
+		s.mu.Lock()
+		s.cached = listCache{sha: sha, pattern: st.Pattern, names: names}
+		s.mu.Unlock()
+	}
 	out := make([]Project, len(names))
 	for i, n := range names {
 		out[i] = Project{Name: n, Dir: st.Dir(n)}
@@ -142,6 +160,15 @@ func (s *Service) Get(ctx context.Context, name string) (*Project, Settings, err
 // there plus the server-side owners of the default branch's protection.
 // Directories are given without a trailing slash; "" is the root.
 func (s *Service) Owners(ctx context.Context, sha, p string, dir bool) []string {
+	return s.OwnersAt(ctx, sha).Of(p, dir)
+}
+
+// OwnerRules are the parsed code owner rules at one commit.
+type OwnerRules struct{ co *pulls.CodeOwners }
+
+// OwnersAt reads and parses the code owner rules once, for looking up many
+// paths at the same commit.
+func (s *Service) OwnersAt(ctx context.Context, sha string) OwnerRules {
 	var src strings.Builder
 	for _, f := range pulls.CodeOwnersPaths {
 		if b, err := s.Repo.ReadBlob(ctx, sha, f, 1<<20); err == nil {
@@ -158,11 +185,19 @@ func (s *Service) Owners(ctx context.Context, sha, p string, dir bool) []string 
 		src.WriteString(prot.Owners)
 	}
 	if src.Len() == 0 {
+		return OwnerRules{}
+	}
+	return OwnerRules{pulls.ParseCodeOwners(src.String())}
+}
+
+// Of returns the owners of a path; see Owners.
+func (o OwnerRules) Of(p string, dir bool) []string {
+	if o.co == nil {
 		return nil
 	}
 	if dir {
 		p += "/"
 	}
-	owners, _ := pulls.ParseCodeOwners(src.String()).Owners(strings.TrimPrefix(p, "/"))
+	owners, _ := o.co.Owners(strings.TrimPrefix(p, "/"))
 	return owners
 }

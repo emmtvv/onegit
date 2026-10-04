@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -182,6 +183,11 @@ func (j *Job) Duration() time.Duration {
 
 const runCols = `r.id, r.kind, r.name, r.file, r.event, r.ref, r.sha, r.before_sha, r.changed_files, r.pull_id, r.deployment_id,
 	r.triggered_by, COALESCE(u.username, 'ghost'), r.status, r.created_at, r.started_at, r.finished_at`
+
+// runListCols leaves out changed_files (up to maxChangedFiles paths per
+// run): lists never show them, RunByID does.
+var runListCols = strings.Replace(runCols, "r.changed_files", "NULL::text[]", 1)
+
 const runFrom = ` FROM ci_runs r LEFT JOIN users u ON u.id = r.triggered_by `
 
 func scanRun(row pgx.Row) (*Run, error) {
@@ -221,6 +227,10 @@ func (s *Store) CreateRun(ctx context.Context, r *Run, jobs []*Job) error {
 		if err != nil {
 			return err
 		}
+		if _, err := tx.Exec(ctx, `INSERT INTO ci_run_dirs (dir, run_id) SELECT unnest($2::text[]), $1::bigint`,
+			r.ID, dirsOf(r.ChangedFiles)); err != nil {
+			return err
+		}
 		for _, j := range jobs {
 			j.RunID = r.ID
 			if j.Needs == nil {
@@ -245,20 +255,33 @@ func (s *Store) RunByID(ctx context.Context, id int64) (*Run, error) {
 	return scanRun(s.db.QueryRow(ctx, `SELECT `+runCols+runFrom+`WHERE r.id = $1`, id))
 }
 
+// RunFilter selects runs, newest first. Listed runs have no ChangedFiles.
 type RunFilter struct {
 	Kind   string
 	SHA    string
 	Ref    string // e.g. refs/heads/main
 	Dir    string // runs whose changed files include something under Dir
 	Limit  int
-	Offset int
+	Offset int   // prefer the cursors
+	Before int64 // keyset cursors, see Page
+	After  int64
 }
 
 func (s *Store) ListRuns(ctx context.Context, f RunFilter) ([]*Run, error) {
-	rows, err := s.db.Query(ctx, `SELECT `+runCols+runFrom+`WHERE ($1 = '' OR r.kind = $1) AND ($2 = '' OR r.sha = $2)
-		AND ($5 = '' OR r.ref = $5)
-		AND ($6 = '' OR EXISTS (SELECT 1 FROM unnest(r.changed_files) f WHERE starts_with(f, $6)))
-		ORDER BY r.id DESC LIMIT $3 OFFSET $4`, f.Kind, f.SHA, f.Limit, f.Offset, f.Ref, dirPrefix(f.Dir))
+	var w where
+	if f.Kind != "" {
+		w.add(`r.kind = ?`, f.Kind)
+	}
+	if f.SHA != "" {
+		w.add(`r.sha = ?`, f.SHA)
+	}
+	if f.Ref != "" {
+		w.add(`r.ref = ?`, f.Ref)
+	}
+	w.touchesDir(f.Dir, "r", "ci_run_dirs", "run_id")
+	page := Page{Limit: f.Limit, Offset: f.Offset, Before: f.Before, After: f.After}
+	tail := page.apply(&w, "r.id")
+	rows, err := s.db.Query(ctx, `SELECT `+runListCols+runFrom+w.sql()+tail, w.args...)
 	if err != nil {
 		return nil, err
 	}
@@ -270,6 +293,50 @@ func (s *Store) ListRuns(ctx context.Context, f RunFilter) ([]*Run, error) {
 			return nil, err
 		}
 		out = append(out, r)
+	}
+	return newestFirst(page, out), rows.Err()
+}
+
+// LastRunsIn returns the latest run of a kind on ref that changed files
+// under each of dirs, in one query; directories without one are absent.
+func (s *Store) LastRunsIn(ctx context.Context, kind, ref string, dirs []string) (map[string]*Run, error) {
+	out := map[string]*Run{}
+	var shallow []string
+	for _, d := range dirs {
+		if p := dirPrefix(d); p != "" && strings.Count(p, "/") <= maxDirDepth {
+			shallow = append(shallow, p)
+			continue
+		}
+		runs, err := s.ListRuns(ctx, RunFilter{Kind: kind, Ref: ref, Dir: d, Limit: 1})
+		if err != nil {
+			return nil, err
+		}
+		if len(runs) > 0 {
+			out[d] = runs[0]
+		}
+	}
+	rows, err := s.db.Query(ctx, `SELECT dirs.dir, `+runListCols+` FROM unnest($1::text[]) dirs(dir)
+		CROSS JOIN LATERAL (SELECT rd.run_id FROM ci_run_dirs rd JOIN ci_runs x ON x.id = rd.run_id
+			WHERE rd.dir = dirs.dir AND x.kind = $2 AND x.ref = $3 ORDER BY rd.run_id DESC LIMIT 1) last
+		JOIN ci_runs r ON r.id = last.run_id LEFT JOIN users u ON u.id = r.triggered_by`, shallow, kind, ref)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	byPrefix := map[string]*Run{}
+	for rows.Next() {
+		var r Run
+		var dir string
+		if err := rows.Scan(&dir, &r.ID, &r.Kind, &r.Name, &r.File, &r.Event, &r.Ref, &r.SHA, &r.BeforeSHA, &r.ChangedFiles, &r.PullID,
+			&r.DeploymentID, &r.TriggeredBy, &r.TriggeredByName, &r.Status, &r.CreatedAt, &r.StartedAt, &r.FinishedAt); err != nil {
+			return nil, err
+		}
+		byPrefix[dir] = &r
+	}
+	for _, d := range dirs {
+		if r, ok := byPrefix[dirPrefix(d)]; ok {
+			out[d] = r
+		}
 	}
 	return out, rows.Err()
 }
@@ -374,9 +441,84 @@ type LogChunk struct {
 	Data string `json:"data"`
 }
 
-func (s *Store) LogChunks(ctx context.Context, jobID int64, afterSeq int) ([]LogChunk, error) {
-	rows, _ := s.db.Query(ctx, `SELECT seq, data FROM ci_logs WHERE job_id = $1 AND seq > $2 ORDER BY seq`, jobID, afterSeq)
+// LogTail returns the last chunks of a job's log, about maxBytes of them
+// (at least one chunk); cut reports that earlier chunks were left out.
+func (s *Store) LogTail(ctx context.Context, jobID int64, maxBytes int) (chunks []LogChunk, cut bool, err error) {
+	rows, err := s.db.Query(ctx, `SELECT seq, data FROM ci_logs WHERE job_id = $1 ORDER BY seq DESC`, jobID)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	size := 0
+	for rows.Next() {
+		if size >= maxBytes {
+			cut = true
+			break
+		}
+		var c LogChunk
+		if err := rows.Scan(&c.Seq, &c.Data); err != nil {
+			return nil, false, err
+		}
+		size += len(c.Data)
+		chunks = append(chunks, c)
+	}
+	slices.Reverse(chunks)
+	return chunks, cut, rows.Err()
+}
+
+// StreamLog calls fn with each chunk of a job's log in order, without
+// holding the whole log in memory.
+func (s *Store) StreamLog(ctx context.Context, jobID int64, fn func(data string) error) error {
+	const batch = 200
+	after := -1
+	for {
+		chunks, err := s.LogPage(ctx, jobID, after, batch)
+		if err != nil {
+			return err
+		}
+		for _, c := range chunks {
+			if err := fn(c.Data); err != nil {
+				return err
+			}
+			after = c.Seq
+		}
+		if len(chunks) < batch {
+			return nil
+		}
+	}
+}
+
+// LogPage returns up to limit chunks after afterSeq.
+func (s *Store) LogPage(ctx context.Context, jobID int64, afterSeq, limit int) ([]LogChunk, error) {
+	rows, _ := s.db.Query(ctx, `SELECT seq, data FROM ci_logs WHERE job_id = $1 AND seq > $2 ORDER BY seq LIMIT $3`, jobID, afterSeq, limit)
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[LogChunk])
+}
+
+// PruneLogs deletes the logs of jobs created before cutoff, a batch at a
+// time; it returns how many chunks it removed.
+func (s *Store) PruneLogs(ctx context.Context, cutoff time.Time) (int64, error) {
+	var first *int64
+	// The first job to keep; logs of every job before it go.
+	err := s.db.QueryRow(ctx, `SELECT id FROM ci_jobs WHERE created_at >= $1 ORDER BY created_at LIMIT 1`, cutoff).Scan(&first)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return 0, err
+	}
+	if first == nil {
+		if err := s.db.QueryRow(ctx, `SELECT max(id) + 1 FROM ci_jobs`).Scan(&first); err != nil || first == nil {
+			return 0, err
+		}
+	}
+	var total int64
+	for {
+		tag, err := s.db.Exec(ctx, `DELETE FROM ci_logs WHERE ctid IN (SELECT ctid FROM ci_logs WHERE job_id < $1 LIMIT 5000)`, *first)
+		if err != nil {
+			return total, err
+		}
+		total += tag.RowsAffected()
+		if tag.RowsAffected() < 5000 {
+			return total, nil
+		}
+	}
 }
 
 func (s *Store) SetJobSteps(ctx context.Context, jobID int64, steps []StepState) error {
@@ -564,12 +706,24 @@ type TargetDeploy struct {
 // LatestDeploys returns, per target, the latest successful deploy and, when
 // newer, the latest finished attempt.
 func (s *Store) LatestDeploys(ctx context.Context) ([]*TargetDeploy, error) {
+	// A loose index scan over ci_jobs_deployed: one probe per target instead
+	// of reading every deploy job ever run.
 	rows, err := s.db.Query(ctx, `
-		SELECT DISTINCT ON (j.target_key) j.target, j.target_key, j.id, j.status, r.sha, r.deployment_id,
+		WITH RECURSIVE t(key) AS (
+			(SELECT target_key FROM ci_jobs WHERE kind = 'deploy' AND status = 'success' AND target_key IS NOT NULL
+			 ORDER BY target_key LIMIT 1)
+			UNION ALL
+			SELECT (SELECT target_key FROM ci_jobs WHERE kind = 'deploy' AND status = 'success' AND target_key > t.key
+			        ORDER BY target_key LIMIT 1)
+			FROM t WHERE t.key IS NOT NULL
+		)
+		SELECT j.target, j.target_key, j.id, j.status, r.sha, r.deployment_id,
 		       COALESCE(u.username, 'ghost'), COALESCE(j.finished_at, j.created_at)
-		FROM ci_jobs j JOIN ci_runs r ON r.id = j.run_id LEFT JOIN users u ON u.id = r.triggered_by
-		WHERE j.kind = 'deploy' AND j.status = 'success'
-		ORDER BY j.target_key, j.id DESC`)
+		FROM t CROSS JOIN LATERAL (SELECT * FROM ci_jobs WHERE kind = 'deploy' AND status = 'success' AND target_key = t.key
+		                           ORDER BY id DESC LIMIT 1) j
+		JOIN ci_runs r ON r.id = j.run_id LEFT JOIN users u ON u.id = r.triggered_by
+		WHERE t.key IS NOT NULL
+		ORDER BY j.target_key`)
 	if err != nil {
 		return nil, err
 	}

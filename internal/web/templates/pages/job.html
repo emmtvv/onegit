@@ -19,6 +19,7 @@
       {{if and $d.CanWrite (not $r.FinishedAt) (not $r.DeploymentID)}}<form method="post" action="/actions/runs/{{$r.ID}}/cancel"><button class="btn btn-sm btn-danger" type="submit">Cancel run</button></form>{{end}}
     </div>
     <ul class="job-steps" id="steps">{{range $j.Steps}}<li class="step-{{.Status}}">{{template "status-icon" .Status}} {{.Name}}</li>{{end}}</ul>
+    <div class="blob-note" id="log-cut" hidden>Only the end of this log is shown. <a href="/actions/jobs/{{$j.ID}}/raw">Open the full log</a></div>
     <pre class="job-log" id="log" data-job="{{$j.ID}}"></pre>
   </div>
 </div>
@@ -31,7 +32,10 @@
 (function(){
   const pre = document.getElementById('log'), id = pre.dataset.job, icons = document.getElementById('icons').content;
   const icon = s => { const e = icons.querySelector('[data-s="'+s+'"]') || icons.querySelector('[data-s="pending"]'); return e.innerHTML; };
-  let after = -1, carry = '';
+  // The page keeps at most maxLines lines; older ones are dropped and the
+  // full log stays one click away.
+  const maxLines = 20000, cutNote = document.getElementById('log-cut');
+  let after = -1, carry = '', lines = 0;
   const ansi = /\x1b\[[0-9;?]*[A-Za-z]/g;
   function addLine(line) {
     const cr = line.lastIndexOf('\r');
@@ -42,6 +46,7 @@
     if (line.startsWith('##[step] ')) { div.className = 'log-step'; div.textContent = line.slice(9); }
     else { div.className = 'log-line'; div.textContent = line; }
     pre.appendChild(div);
+    if (++lines > maxLines) { pre.firstChild.remove(); lines--; cutNote.hidden = false; }
   }
   function append(text) {
     const lines = (carry + text).split('\n');
@@ -49,13 +54,18 @@
     lines.forEach(addLine);
   }
   async function poll() {
-    let done = false;
+    let done = false, more = false;
     try {
       const pinned = window.innerHeight + window.scrollY >= document.body.scrollHeight - 40;
       const res = await fetch('/actions/jobs/' + id + '/log?after=' + after, {cache: 'no-store'});
       const j = await res.json();
+      if (j.cut) {
+        cutNote.hidden = false;
+        // The tail starts mid-line: drop the partial first line.
+        if (j.chunks.length) { const c = j.chunks[0], nl = c.data.indexOf('\n'); c.data = nl >= 0 ? c.data.slice(nl + 1) : ''; }
+      }
       j.chunks.forEach(c => { append(c.data); after = c.seq; });
-      done = j.done;
+      done = j.done; more = j.more;
       if (done && carry) { addLine(carry); carry = ''; }
       document.getElementById('job-status').textContent = j.status;
       document.getElementById('job-icon').innerHTML = icon(j.status);
@@ -67,7 +77,7 @@
       }
       if (pinned && j.chunks.length) window.scrollTo(0, document.body.scrollHeight);
     } catch (e) {}
-    if (!done) setTimeout(poll, 2000);
+    if (!done) setTimeout(poll, more ? 0 : 2000);
   }
   poll();
 })();

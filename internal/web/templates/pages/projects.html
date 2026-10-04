@@ -24,5 +24,9 @@
     </tbody>
   </table>
 </div>
+<div class="pager">
+  {{if gt $d.Page 1}}<a class="btn" href="?q={{queryesc $d.Q}}&page={{sub $d.Page 1}}">Previous</a>{{end}}
+  {{if $d.HasNext}}<a class="btn" href="?q={{queryesc $d.Q}}&page={{add $d.Page 1}}">Next</a>{{end}}
+</div>
 {{end}}
 {{end}}

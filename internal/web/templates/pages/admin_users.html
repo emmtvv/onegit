@@ -1,6 +1,7 @@
 {{define "content"}}{{template "admin-nav" "users"}}
 <div class="box">
-  <div class="box-header"><strong>Users</strong><span class="spacer"></span><span class="muted">{{len .Data.Users}} total</span></div>
+  <div class="box-header"><strong>Users</strong><span class="spacer"></span><span class="muted">{{.Data.Total}} {{if .Data.Q}}found{{else}}total{{end}}</span>
+    <form method="get" action="/admin/users"><input type="search" name="q" value="{{.Data.Q}}" placeholder="Find a user" aria-label="Find a user"></form></div>
   <table class="table">
     <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Sign-in</th><th>Created</th><th></th></tr></thead>
     <tbody>
@@ -16,6 +17,10 @@
     {{end}}
     </tbody>
   </table>
+</div>
+<div class="pager">
+  {{if gt .Data.Page 1}}<a class="btn" href="?q={{queryesc .Data.Q}}&page={{sub .Data.Page 1}}">Previous</a>{{end}}
+  {{if .Data.HasNext}}<a class="btn" href="?q={{queryesc .Data.Q}}&page={{add .Data.Page 1}}">Next</a>{{end}}
 </div>
 <div class="box pad">
   <h2>Create user</h2>

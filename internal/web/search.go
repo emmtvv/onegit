@@ -103,6 +103,13 @@ func (w *Web) search(rw http.ResponseWriter, r *http.Request) {
 	}
 	sctx, cancel := context.WithTimeout(ctx, searchTimeout)
 	defer cancel()
+	release, err := w.acquireHeavy(sctx, heavyWait)
+	if err != nil {
+		page.Error = "The server is busy with other searches, please try again in a moment."
+		w.render(rw, r, http.StatusServiceUnavailable, "search", page)
+		return
+	}
+	defer release()
 	sq := parseSearchQuery(q)
 	if mode == "files" {
 		files, truncated, err := w.findFiles(sctx, sha, sq)

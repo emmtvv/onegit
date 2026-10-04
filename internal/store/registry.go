@@ -345,15 +345,37 @@ type RegistryImage struct {
 	UpdatedAt time.Time
 }
 
-func (s *Store) ListRegistryImages(ctx context.Context) ([]RegistryImage, error) {
-	rows, _ := s.db.Query(ctx, `
-		SELECT m.repo, count(t.name)::int,
+// ListRegistryImages lists images whose name contains q, most recently
+// updated first, and counts all matches.
+func (s *Store) ListRegistryImages(ctx context.Context, q string, limit, offset int) ([]RegistryImage, int, error) {
+	// The size of the latest tag is looked up for the page's images only.
+	rows, err := s.db.Query(ctx, `
+		SELECT p.repo, p.tags,
 		       COALESCE((SELECT lm.total_size FROM registry_tags lt JOIN registry_manifests lm ON lm.id = lt.manifest_id
-		                  WHERE lt.repo = m.repo ORDER BY lt.updated_at DESC LIMIT 1), 0),
-		       GREATEST(max(m.created_at), COALESCE(max(t.updated_at), max(m.created_at)))
-		FROM registry_manifests m LEFT JOIN registry_tags t ON t.manifest_id = m.id
-		GROUP BY m.repo ORDER BY 4 DESC`)
-	return pgx.CollectRows(rows, pgx.RowToStructByPos[RegistryImage])
+		                  WHERE lt.repo = p.repo ORDER BY lt.updated_at DESC LIMIT 1), 0),
+		       p.updated, p.total
+		FROM (
+			SELECT m.repo, COALESCE(t.n, 0)::int AS tags, GREATEST(m.created, COALESCE(t.updated, m.created)) AS updated,
+			       count(*) OVER ()::int AS total
+			FROM (SELECT repo, max(created_at) AS created FROM registry_manifests
+			      WHERE $1 = '' OR strpos(repo, lower($1)) > 0 GROUP BY repo) m
+			LEFT JOIN (SELECT repo, count(*) AS n, max(updated_at) AS updated FROM registry_tags GROUP BY repo) t ON t.repo = m.repo
+			ORDER BY 3 DESC, 1 LIMIT $2 OFFSET $3
+		) p ORDER BY p.updated DESC, p.repo`, q, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var out []RegistryImage
+	total := 0
+	for rows.Next() {
+		var img RegistryImage
+		if err := rows.Scan(&img.Repo, &img.Tags, &img.Size, &img.UpdatedAt, &total); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, img)
+	}
+	return out, total, rows.Err()
 }
 
 // RegistryVersion is a tag, or an untagged top-level manifest (named by its

@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 
 	"onegit/internal/deploy"
@@ -60,16 +61,34 @@ func (w *Web) projectDeploys(ctx context.Context, st projects.Settings) map[stri
 	return out
 }
 
-func (w *Web) projectRow(ctx context.Context, p projects.Project, sha, ref string, deploys map[string][]projectDeploy) projectRow {
-	row := projectRow{Project: p, Deploys: deploys[p.Name]}
+const projectsPerPage = 50
+
+// projectRows fills in owners, open PRs, the default branch's last CI run
+// and deployments for a page of projects, with a fixed number of queries
+// however many projects there are.
+func (w *Web) projectRows(ctx context.Context, list []projects.Project, sha, ref string, deploys map[string][]projectDeploy) []projectRow {
+	dirs := make([]string, len(list))
+	for i, p := range list {
+		dirs[i] = p.Dir
+	}
+	var owners projects.OwnerRules
 	if sha != "" {
-		row.Owners = w.Projects.Owners(ctx, sha, p.Dir, true)
+		owners = w.Projects.OwnersAt(ctx, sha)
 	}
-	row.OpenPulls, _, _ = w.Store.CountPullsIn(ctx, p.Dir)
-	if runs, err := w.Store.ListRuns(ctx, store.RunFilter{Kind: "pipeline", Ref: ref, Dir: p.Dir, Limit: 1}); err == nil && len(runs) > 0 {
-		row.LastRun = runs[0]
+	pulls, err := w.Store.OpenPullCountsIn(ctx, dirs)
+	if err != nil {
+		w.Log.Warn("open pulls per project", "err", err)
 	}
-	return row
+	runs, err := w.Store.LastRunsIn(ctx, "pipeline", ref, dirs)
+	if err != nil {
+		w.Log.Warn("last runs per project", "err", err)
+	}
+	rows := make([]projectRow, len(list))
+	for i, p := range list {
+		rows[i] = projectRow{Project: p, Deploys: deploys[p.Name], Owners: owners.Of(p.Dir, true),
+			OpenPulls: pulls[p.Dir], LastRun: runs[p.Dir]}
+	}
+	return rows
 }
 
 func (w *Web) projectList(rw http.ResponseWriter, r *http.Request) {
@@ -81,17 +100,21 @@ func (w *Web) projectList(rw http.ResponseWriter, r *http.Request) {
 	}
 	branch := w.defaultBranch(ctx)
 	sha, _ := w.Repo.ResolveCommit(ctx, "refs/heads/"+branch)
-	deploys := w.projectDeploys(ctx, st)
 	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
-	var rows []projectRow
+	var found []projects.Project
 	for _, p := range list {
-		if q != "" && !strings.Contains(strings.ToLower(p.Name), q) {
-			continue
+		if q == "" || strings.Contains(strings.ToLower(p.Name), q) {
+			found = append(found, p)
 		}
-		rows = append(rows, w.projectRow(ctx, p, sha, "refs/heads/"+branch, deploys))
 	}
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	page = max(page, 1)
+	from := min((page-1)*projectsPerPage, len(found))
+	to := min(from+projectsPerPage, len(found))
+	rows := w.projectRows(ctx, found[from:to], sha, "refs/heads/"+branch, w.projectDeploys(ctx, st))
 	w.render(rw, r, http.StatusOK, "projects", &Page{Title: "Projects · " + w.Cfg.Repo.Name, Tab: "projects", Data: map[string]any{
 		"Rows": rows, "Settings": st, "Configured": st.Pattern != "", "Q": q, "Total": len(list),
+		"Page": page, "HasNext": to < len(found),
 	}})
 }
 
@@ -109,7 +132,7 @@ func (w *Web) projectView(rw http.ResponseWriter, r *http.Request) {
 	branch := w.defaultBranch(ctx)
 	ref := "refs/heads/" + branch
 	sha, _ := w.Repo.ResolveCommit(ctx, ref)
-	row := w.projectRow(ctx, *p, sha, ref, w.projectDeploys(ctx, st))
+	row := w.projectRows(ctx, []projects.Project{*p}, sha, ref, w.projectDeploys(ctx, st))[0]
 	runs, err := w.Store.ListRuns(ctx, store.RunFilter{Kind: "pipeline", Dir: p.Dir, Limit: 15})
 	if err != nil {
 		w.fail(rw, r, err)

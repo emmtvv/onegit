@@ -1,8 +1,8 @@
 {{define "content"}}{{$d := .Data}}
 <div class="toolbar">
   <div class="btn-group">
-    <a class="btn {{if eq $d.State "open"}}active{{end}}" href="/pulls{{with $d.Project}}?project={{queryesc .}}{{end}}">{{template "icon-pr"}}{{$d.Open}} Open</a>
-    <a class="btn {{if eq $d.State "closed"}}active{{end}}" href="/pulls?state=closed{{with $d.Project}}&project={{queryesc .}}{{end}}">{{template "icon-check"}}{{$d.Closed}} Closed</a>
+    <a class="btn {{if eq $d.State "open"}}active{{end}}" href="/pulls{{with $d.Project}}?project={{queryesc .}}{{end}}">{{template "icon-pr"}}{{capcount $d.Open}} Open</a>
+    <a class="btn {{if eq $d.State "closed"}}active{{end}}" href="/pulls?state=closed{{with $d.Project}}&project={{queryesc .}}{{end}}">{{template "icon-check"}}{{capcount $d.Closed}} Closed</a>
   </div>
   {{template "project-filter" (dict "Projects" $d.Projects "Current" $d.Project "Base" (print "/pulls?state=" $d.State "&"))}}
   <span class="spacer"></span>
@@ -30,7 +30,7 @@
   {{end}}
 </div>
 <div class="pager">
-  {{if gt $d.Page 1}}<a class="btn" href="?state={{$d.State}}&project={{$d.Project}}&page={{sub $d.Page 1}}">Newer</a>{{end}}
-  {{if $d.HasNext}}<a class="btn" href="?state={{$d.State}}&project={{$d.Project}}&page={{add $d.Page 1}}">Older</a>{{end}}
+  {{with $d.Pager.Newer}}<a class="btn" href="?state={{$d.State}}&project={{$d.Project}}&after={{.}}">Newer</a>{{end}}
+  {{with $d.Pager.Older}}<a class="btn" href="?state={{$d.State}}&project={{$d.Project}}&before={{.}}">Older</a>{{end}}
 </div>
 {{end}}

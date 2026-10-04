@@ -1,4 +1,8 @@
 {{define "content"}}{{$d := .Data}}
+<div class="toolbar">
+  <span class="spacer"></span>
+  <form method="get" action="/branches"><input type="search" name="q" value="{{$d.Q}}" placeholder="Filter branches" aria-label="Filter branches"></form>
+</div>
 {{with $d.Default}}
 <h3 class="group-title">Default branch</h3>
 <div class="box">
@@ -23,7 +27,11 @@
     <a class="btn btn-sm" href="/commits/{{pathesc .Name}}">{{template "icon-history"}}</a>
   </div>
   {{else}}
-  <div class="blob-note">No other branches.</div>
+  <div class="blob-note">{{if $d.Q}}No branches match.{{else}}No other branches.{{end}}</div>
   {{end}}
+</div>
+<div class="pager">
+  {{if gt $d.Page 1}}<a class="btn" href="?q={{queryesc $d.Q}}&page={{sub $d.Page 1}}">Previous</a>{{end}}
+  {{if $d.HasNext}}<a class="btn" href="?q={{queryesc $d.Q}}&page={{add $d.Page 1}}">Next</a>{{end}}
 </div>
 {{end}}

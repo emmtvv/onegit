@@ -142,13 +142,29 @@ func (r *Repo) MatchDirs(ctx context.Context, commit, pattern string) []string {
 	}
 	var out []string
 	for _, e := range entries {
-		if !e.IsDir() {
-			continue
+		if e.IsDir() {
+			out = append(out, e.Name)
 		}
-		if rest != "" && rest != "/" && r.ObjectType(ctx, commit, prefix+e.Name+rest) == "" {
-			continue
-		}
-		out = append(out, e.Name)
 	}
-	return out
+	if rest == "" || rest == "/" || len(out) == 0 {
+		return out
+	}
+	// Keep the directories that have the rest of the pattern, checking all
+	// of them in one git process.
+	var in strings.Builder
+	for _, name := range out {
+		in.WriteString(commit + ":" + prefix + name + rest + "\n")
+	}
+	res, err := r.run(ctx, strings.NewReader(in.String()), "cat-file", "--batch-check=%(objecttype)")
+	if err != nil {
+		return nil
+	}
+	lines := strings.Split(strings.TrimRight(string(res), "\n"), "\n")
+	var found []string
+	for i, name := range out {
+		if i < len(lines) && !strings.HasSuffix(lines[i], " missing") && !strings.HasSuffix(lines[i], " ambiguous") {
+			found = append(found, name)
+		}
+	}
+	return found
 }

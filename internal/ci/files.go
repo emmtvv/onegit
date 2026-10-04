@@ -250,6 +250,18 @@ func (s *Service) uploadCache(w http.ResponseWriter, r *http.Request, j *store.J
 }
 
 // cleanupFiles deletes expired artifacts and evicts caches.
+// pruneLogs applies the log retention, if any.
+func (s *Service) pruneLogs(ctx context.Context) error {
+	if s.Cfg.CI.LogRetentionDays <= 0 {
+		return nil
+	}
+	n, err := s.Store.PruneLogs(ctx, time.Now().AddDate(0, 0, -s.Cfg.CI.LogRetentionDays))
+	if n > 0 {
+		s.Log.Info("pruned job logs", "chunks", n)
+	}
+	return err
+}
+
 func (s *Service) cleanupFiles(ctx context.Context) error {
 	if s.Blob == nil {
 		return nil

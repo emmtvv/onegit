@@ -48,10 +48,11 @@ type Web struct {
 	Deps
 	tmpl    map[string]*templateSet
 	handler http.Handler
+	heavy   chan struct{} // slots for heavy git work, see acquireHeavy
 }
 
 func New(d Deps) (*Web, error) {
-	w := &Web{Deps: d}
+	w := &Web{Deps: d, heavy: make(chan struct{}, heavySlots)}
 	var err error
 	if w.tmpl, err = loadTemplates(); err != nil {
 		return nil, err
@@ -88,6 +89,7 @@ func (w *Web) routes() http.Handler {
 	mux.Handle("GET /commit/{sha}", read(w.commit))
 	mux.Handle("GET /branches", read(w.branches))
 	mux.Handle("GET /tags", read(w.tags))
+	mux.Handle("GET /refs", read(w.refsJSON))
 	mux.Handle("GET /search", read(w.search))
 
 	// Pull requests
@@ -312,7 +314,7 @@ func (w *Web) render(rw http.ResponseWriter, r *http.Request, status int, name s
 		p.Flash = popFlash(rw, r)
 	}
 	if p.Tab != "" {
-		p.OpenPulls, _, _ = w.Store.CountPulls(r.Context())
+		p.OpenPulls, _ = w.Store.CountOpenPulls(r.Context())
 		_, _, p.Projects, _ = w.Projects.Settings(r.Context())
 	}
 	ts, ok := w.tmpl[name]
@@ -350,6 +352,10 @@ func (w *Web) serverError(rw http.ResponseWriter, r *http.Request, err error) {
 func (w *Web) fail(rw http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(err, git.ErrNotExist) || errors.Is(err, store.ErrNotFound) {
 		w.notFound(rw, r)
+		return
+	}
+	if errors.Is(err, errBusy) {
+		w.errorPage(rw, r, http.StatusServiceUnavailable, "The server is busy, please try again in a moment.")
 		return
 	}
 	w.serverError(rw, r, err)

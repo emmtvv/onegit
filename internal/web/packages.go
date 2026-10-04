@@ -11,7 +11,10 @@ import (
 	"onegit/internal/store"
 )
 
-const versionsPerPage = 30
+const (
+	versionsPerPage = 30
+	imagesPerPage   = 50
+)
 
 type packageVersion struct {
 	store.RegistryVersion
@@ -39,25 +42,20 @@ func (w *Web) packageList(rw http.ResponseWriter, r *http.Request) {
 		w.notFound(rw, r)
 		return
 	}
-	images, err := w.Store.ListRegistryImages(r.Context())
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	page = max(page, 1)
+	images, total, err := w.Store.ListRegistryImages(r.Context(), q, imagesPerPage, (page-1)*imagesPerPage)
 	if err != nil {
 		w.serverError(rw, r, err)
 		return
 	}
-	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	if q != "" {
-		var found []store.RegistryImage
-		for _, img := range images {
-			if strings.Contains(img.Repo, strings.ToLower(q)) {
-				found = append(found, img)
-			}
-		}
-		images = found
-	}
 	w.render(rw, r, http.StatusOK, "packages", &Page{Title: "Packages", Tab: "packages", Data: map[string]any{
-		"Images": images,
-		"Query":  q,
-		"Host":   w.Cfg.RegistryHost(),
+		"Images":  images,
+		"Query":   q,
+		"Host":    w.Cfg.RegistryHost(),
+		"Page":    page,
+		"HasNext": page*imagesPerPage < total,
 	}})
 }
 

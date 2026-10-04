@@ -2,10 +2,11 @@
 <h2>Open a pull request</h2>
 <form method="get" action="/pulls/new" class="box compare-bar">
   {{template "icon-pr"}}
-  <label>base <select name="base" onchange="this.form.submit()">{{range $d.Branches}}<option {{if eq .Name $d.Base}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+  <label>base <input name="base" value="{{$d.Base}}" list="pull-branches" autocomplete="off" required onchange="this.form.submit()"></label>
   <span class="muted">←</span>
-  <label>compare <select name="head" onchange="this.form.submit()"><option value="">choose a branch…</option>{{range $d.Branches}}<option {{if eq .Name $d.Head}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>
-  <noscript><button class="btn btn-sm" type="submit">Compare</button></noscript>
+  <label>compare <input name="head" value="{{$d.Head}}" list="pull-branches" autocomplete="off" placeholder="choose a branch…" onchange="this.form.submit()"></label>
+  <datalist id="pull-branches">{{range $d.Branches}}<option value="{{.Name}}">{{end}}</datalist>
+  <button class="btn btn-sm" type="submit">Compare</button>
   {{if $d.Checked}}{{if $d.Conflicts}}<span class="text-del">{{template "icon-x"}}Can’t automatically merge. You can still open the pull request.</span>{{else}}<span class="text-add">{{template "icon-check"}}Able to merge.</span>{{end}}{{end}}
 </form>
 

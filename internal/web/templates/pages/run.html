@@ -40,5 +40,5 @@
 </div>
 {{end}}
 </div>
-{{if $r.ChangedFiles}}<details class="box pad"><summary>{{len $r.ChangedFiles}} changed file{{if ne (len $r.ChangedFiles) 1}}s{{end}}</summary><ul class="mono small">{{range $r.ChangedFiles}}<li>{{.}}</li>{{end}}</ul></details>{{end}}
+{{if $r.ChangedFiles}}<details class="box pad"><summary>{{len $r.ChangedFiles}} changed file{{if ne (len $r.ChangedFiles) 1}}s{{end}}</summary><ul class="mono small">{{range $d.Changed}}<li>{{.}}</li>{{end}}</ul>{{if gt (len $r.ChangedFiles) (len $d.Changed)}}<p class="muted small">and {{sub (len $r.ChangedFiles) (len $d.Changed)}} more; <a href="/commits/{{$r.SHA}}">see the commits</a>.</p>{{end}}</details>{{end}}
 {{end}}

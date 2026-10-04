@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"html/template"
 	"mime"
 	"net/http"
@@ -88,8 +89,6 @@ func (w *Web) tree(rw http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	branches, _ := w.Repo.Branches(ctx)
-	tags, _ := w.Repo.Tags(ctx)
 	owners := w.Projects.Owners(ctx, rv.Ref.SHA, rv.Path, true)
 	var project *projects.Project
 	if list, _, err := w.Projects.List(ctx); err == nil {
@@ -103,8 +102,7 @@ func (w *Web) tree(rw http.ResponseWriter, r *http.Request) {
 		Title: titleFor(w.Cfg.Repo.Name, rv.Path), Tab: "code",
 		Data: map[string]any{
 			"Ref": rv.Ref, "Path": rv.Path, "Rows": rows, "Head": head,
-			"Readme": readme, "ReadmeHTML": readmeHTML,
-			"Branches": branches, "Tags": tags, "Owners": owners, "Project": project,
+			"Readme": readme, "ReadmeHTML": readmeHTML, "Owners": owners, "Project": project,
 		},
 	})
 }
@@ -121,6 +119,12 @@ func (w *Web) lastCommits(ctx context.Context, commit, dir string, entries []git
 	for i, e := range entries {
 		names[i] = e.Name
 	}
+	// The listing is useful without the column: don't wait long for a slot.
+	release, err := w.acquireHeavy(ctx, 2*time.Second)
+	if err != nil {
+		return nil
+	}
+	defer release()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	res, err := w.Repo.LastCommits(ctx, commit, dir, names, 5000)
@@ -232,7 +236,15 @@ func (w *Web) commits(rw http.ResponseWriter, r *http.Request) {
 	}
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	page = max(page, 1)
-	list, err := w.Repo.Log(ctx, rv.Ref.SHA, git.LogOptions{
+	// Later pages stay on the commit the first page showed, so pushes in
+	// between don't shift them.
+	at := rv.Ref.SHA
+	if a := r.URL.Query().Get("at"); a != "" && page > 1 {
+		if sha, err := w.Repo.ResolveCommit(ctx, a); err == nil {
+			at = sha
+		}
+	}
+	list, err := w.Repo.Log(ctx, at, git.LogOptions{
 		Path: rv.Path, Skip: (page - 1) * commitsPerPage, Limit: commitsPerPage + 1,
 	})
 	if err != nil {
@@ -252,11 +264,8 @@ func (w *Web) commits(rw http.ResponseWriter, r *http.Request) {
 		g := groups[len(groups)-1]
 		g.Commits = append(g.Commits, c)
 	}
-	branches, _ := w.Repo.Branches(ctx)
-	tags, _ := w.Repo.Tags(ctx)
 	w.render(rw, r, http.StatusOK, "commits", &Page{Title: "Commits · " + w.Cfg.Repo.Name, Tab: "commits", Data: map[string]any{
-		"Ref": rv.Ref, "Path": rv.Path, "Groups": groups, "Page": page, "HasNext": hasNext,
-		"Branches": branches, "Tags": tags,
+		"Ref": rv.Ref, "Path": rv.Path, "Groups": groups, "Page": page, "HasNext": hasNext, "At": at,
 	}})
 }
 
@@ -282,6 +291,8 @@ func (w *Web) commit(rw http.ResponseWriter, r *http.Request) {
 	}})
 }
 
+const refsPerPage = 30
+
 type branchRow struct {
 	git.Ref
 	Ahead, Behind int
@@ -291,51 +302,104 @@ type branchRow struct {
 
 func (w *Web) branches(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	list, err := w.Repo.Branches(ctx)
-	if err != nil {
-		w.fail(rw, r, err)
-		return
-	}
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	page = max(page, 1)
 	def := w.defaultBranch(ctx)
-	var defSHA string
-	for _, b := range list {
-		if b.Name == def {
-			defSHA = b.SHA
-		}
-	}
-	byHead, err := w.Store.OpenPullsByHead(ctx)
+	defRefs, err := w.Repo.RefsByName(ctx, git.KindBranch, []string{def})
 	if err != nil {
 		w.fail(rw, r, err)
 		return
 	}
-	rows := make([]branchRow, 0, len(list))
-	var defRow *branchRow
-	for _, b := range list {
-		row := branchRow{Ref: b, IsDefault: b.Name == def}
+	// The default branch is shown on its own, so page through the others.
+	list, hasNext, err := w.Repo.ListRefs(ctx, git.KindBranch, git.RefQuery{
+		Query: q, Exclude: def, Offset: (page - 1) * refsPerPage, Limit: refsPerPage,
+	})
+	if err != nil {
+		w.fail(rw, r, err)
+		return
+	}
+	names := make([]string, len(list))
+	for i, b := range list {
+		names[i] = b.Name
+	}
+	byHead, err := w.Store.OpenPullsByHead(ctx, names)
+	if err != nil {
+		w.fail(rw, r, err)
+		return
+	}
+	var counts map[string][2]int
+	defRef, hasDef := defRefs[def]
+	if hasDef {
+		if counts, err = w.Repo.AheadBehindMany(ctx, defRef.SHA, names); err != nil {
+			w.Log.Warn("ahead/behind", "err", err)
+		}
+	}
+	rows := make([]branchRow, len(list))
+	for i, b := range list {
+		rows[i] = branchRow{Ref: b, Ahead: counts[b.Name][0], Behind: counts[b.Name][1]}
 		if ps := byHead[b.Name]; len(ps) > 0 {
-			row.Pull = ps[0]
+			rows[i].Pull = ps[0]
 		}
-		if !row.IsDefault && defSHA != "" {
-			row.Ahead, row.Behind, _ = w.Repo.AheadBehind(ctx, b.SHA, defSHA)
-		}
-		if row.IsDefault {
-			defRow = &row
-			continue
-		}
-		rows = append(rows, row)
+	}
+	var defRow *branchRow
+	if hasDef && q == "" && page == 1 {
+		defRow = &branchRow{Ref: defRef, IsDefault: true}
 	}
 	w.render(rw, r, http.StatusOK, "branches", &Page{Title: "Branches · " + w.Cfg.Repo.Name, Tab: "branches", Data: map[string]any{
-		"Default": defRow, "Branches": rows,
+		"Default": defRow, "Branches": rows, "Q": q, "Page": page, "HasNext": hasNext,
 	}})
 }
 
 func (w *Web) tags(rw http.ResponseWriter, r *http.Request) {
-	list, err := w.Repo.Tags(r.Context())
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	page = max(page, 1)
+	list, hasNext, err := w.Repo.ListRefs(r.Context(), git.KindTag, git.RefQuery{Query: q, Offset: (page - 1) * refsPerPage, Limit: refsPerPage})
 	if err != nil {
 		w.fail(rw, r, err)
 		return
 	}
-	w.render(rw, r, http.StatusOK, "tags", &Page{Title: "Tags · " + w.Cfg.Repo.Name, Tab: "tags", Data: map[string]any{"Tags": list}})
+	w.render(rw, r, http.StatusOK, "tags", &Page{Title: "Tags · " + w.Cfg.Repo.Name, Tab: "tags", Data: map[string]any{
+		"Tags": list, "Q": q, "Page": page, "HasNext": hasNext,
+	}})
+}
+
+// refMenuSize is how many branches and tags the ref picker shows per kind.
+const refMenuSize = 50
+
+type refLink struct {
+	Name string `json:"name"`
+	Href string `json:"href"`
+}
+
+// refsJSON feeds the ref picker: branches and tags matching ?q=, linking to
+// the same ?path= under the ?view= ("tree" or "commits").
+func (w *Web) refsJSON(rw http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	qv := r.URL.Query()
+	view := qv.Get("view")
+	if view != "commits" {
+		view = "tree"
+	}
+	out := map[string]any{}
+	more := false
+	for key, kind := range map[string]git.RefKind{"branches": git.KindBranch, "tags": git.KindTag} {
+		refs, m, err := w.Repo.ListRefs(ctx, kind, git.RefQuery{Query: strings.TrimSpace(qv.Get("q")), Limit: refMenuSize})
+		if err != nil {
+			http.Error(rw, "internal error", http.StatusInternalServerError)
+			return
+		}
+		links := make([]refLink, len(refs))
+		for i, ref := range refs {
+			links[i] = refLink{Name: ref.Name, Href: "/" + view + "/" + pathEscape(ref.Name, qv.Get("path"))}
+		}
+		out[key], more = links, more || m
+	}
+	out["more"] = more
+	rw.Header().Set("Content-Type", "application/json")
+	rw.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(rw).Encode(out)
 }
 
 func titleFor(repo, p string) string {

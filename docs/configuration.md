@@ -86,6 +86,7 @@ tokens for git and the registry.
 | `ONEGIT_CI_ARTIFACT_RETENTION_DAYS` | `30` | How long artifacts are kept when a job sets no `expire-in` |
 | `ONEGIT_CI_MAX_CACHE_SIZE` | `20GiB` | Total size of CI caches; the least recently used are evicted |
 | `ONEGIT_CI_CACHE_RETENTION_DAYS` | `7` | Caches unused this long are removed |
+| `ONEGIT_CI_LOG_RETENTION_DAYS` | `0` | Logs of jobs older than this are removed; `0` keeps them forever |
 
 Runners are configured separately (see [ci.md](ci.md#runners)):
 

@@ -7,6 +7,39 @@ include breaking changes, always described here.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-04
+
+### Changed
+
+- Scales to large repositories and histories: tens of thousands of
+  branches and tags, millions of commits, CI runs and pull requests,
+  thousands of projects.
+  - Pages under a branch or tag resolve it in one git call instead of
+    listing every ref; the branch/tag picker loads matching refs on demand.
+  - Branches and tags pages are paginated and searchable, with ahead/behind
+    counted in one pass per page. Sorted ref lists are cached and updated
+    incrementally.
+  - Actions and pull request lists page with cursors (`?before=`/`?after=`)
+    instead of offsets; commit history pages stay on the commit the first
+    page showed.
+  - Project, user and package lists are paginated; the projects page uses a
+    fixed number of queries however many projects there are.
+  - Filtering runs and pull requests by project uses an index of changed
+    directories (migration 009 builds it from existing data).
+  - Job pages open with the end of the log and keep at most 20,000 lines;
+    raw logs are streamed.
+  - Pull request counts stop at 10,000 ("10000+").
+  - Code search, blame and the tree's last-commit column share a bounded
+    number of slots per replica; when all stay busy the page says so
+    instead of piling up git processes.
+- The repository is maintained in the background (packed refs, geometric
+  repacks with bitmaps, commit-graph with changed-path Bloom filters, a
+  weekly gc) by one replica at a time; git no longer runs gc during pushes.
+
+### Added
+
+- `ONEGIT_CI_LOG_RETENTION_DAYS` removes old job logs (off by default).
+
 ## [1.3.2] - 2026-10-04
 
 ### Added
@@ -154,7 +187,8 @@ First public release.
   amd64 and arm64, `docker-compose.yml` with the full stack, admin CLI
   (`list-users`, `reset-password`, `registry-gc`).
 
-[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.3.2...HEAD
+[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/emmtvv/onegit/compare/v1.3.2...v1.4.0
 [1.3.2]: https://github.com/emmtvv/onegit/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/emmtvv/onegit/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/emmtvv/onegit/compare/v1.2.0...v1.3.0
