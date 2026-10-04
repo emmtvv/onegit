@@ -7,6 +7,28 @@ include breaking changes, always described here.
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-10-04
+
+### Added
+
+- **Avatars.** Users upload a picture under Settings (PNG, JPEG, GIF or
+  WebP, up to 1 MB) or remove it. It is shown in the top bar, the admin
+  user pages, and next to commits, pull requests and comments whose author
+  email belongs to the user; others still get initials. Images are stored
+  in the S3 bucket under `avatars/<user id>`; a new migration adds the
+  table that records each avatar's source.
+- With single sign-on, the identity provider's `picture` claim becomes the
+  user's avatar on every sign-in and cannot be changed in onegit. Users
+  registered earlier get it at their next sign-in. Without the claim users
+  pick their own; unlinking the SSO identity keeps the picture and makes it
+  editable.
+
+### Changed
+
+- The `picture` claim, like the groups claim, is read from userinfo when
+  the ID token lacks it. Userinfo claims are now used only when their `sub`
+  matches the ID token's, which also applies to groups.
+
 ## [1.5.0] - 2026-10-04
 
 ### Added
@@ -226,7 +248,8 @@ First public release.
   amd64 and arm64, `docker-compose.yml` with the full stack, admin CLI
   (`list-users`, `reset-password`, `registry-gc`).
 
-[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/emmtvv/onegit/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/emmtvv/onegit/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/emmtvv/onegit/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/emmtvv/onegit/compare/v1.3.2...v1.4.0
