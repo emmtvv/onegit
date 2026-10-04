@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/url"
@@ -8,6 +9,7 @@ import (
 	"strings"
 
 	"onegit/internal/deploy"
+	"onegit/internal/git"
 	"onegit/internal/store"
 )
 
@@ -101,22 +103,111 @@ func (w *Web) renderDeployForm(rw http.ResponseWriter, r *http.Request, form url
 		"Dims": dims, "Values": w.Deploy.DimensionValues(ctx, dims, w.recipeSHA(r)),
 		"Selected": form, "Ref": ref, "Comment": form.Get("comment"),
 	}
+	plan := deployPlan{Ref: ref, Current: map[string]*planCurrent{}}
+	for _, d := range dims {
+		plan.Dims = append(plan.Dims, d.Name)
+	}
+	if sha, err := w.Deploy.ResolveRef(ctx, ref); err == nil {
+		plan.SHA = sha
+		data["Commit"], _ = w.Repo.GetCommit(ctx, sha)
+	}
+	w.fillPlanCurrent(ctx, &plan)
+	data["QuickRefs"] = w.quickRefs(ctx)
 	if check {
 		targets, err := targetsFromForm(dims, form)
 		if err == nil {
 			var ev *deploy.Evaluation
 			ev, err = w.Deploy.Plan(ctx, currentUser(r), ref, targets)
 			data["Eval"] = ev
+			plan.Eval = planEval(ev)
 		}
 		if err != nil && formErr == "" {
 			formErr = err.Error()
 		}
 	}
+	data["Plan"] = plan
 	status := http.StatusOK
 	if formErr != "" {
 		status = http.StatusUnprocessableEntity
 	}
 	w.render(rw, r, status, "deploy_new", &Page{Title: "New deployment", Tab: "deploy", Error: formErr, Data: data})
+}
+
+// deployPlan feeds the live plan on the deploy form: the script rebuilds the
+// targets from the ticked values and looks each one up here.
+type deployPlan struct {
+	Dims    []string                `json:"dims"`
+	Ref     string                  `json:"ref"`
+	SHA     string                  `json:"sha"` // empty when the ref does not resolve
+	Current map[string]*planCurrent `json:"current"`
+	Eval    map[string]*planTarget  `json:"eval,omitempty"` // by target key, after Check
+}
+
+// planCurrent is what runs on a target now and how the chosen commit
+// relates to it.
+type planCurrent struct {
+	SHA    string `json:"sha"`
+	Ago    string `json:"ago"`
+	Ahead  int    `json:"ahead"`  // commits the chosen version adds
+	Behind int    `json:"behind"` // commits it takes away (a rollback)
+}
+
+type planTarget struct {
+	OK       bool     `json:"ok"`
+	Approval bool     `json:"approval"` // waits for an unsatisfied approval
+	Problems []string `json:"problems,omitempty"`
+}
+
+// planDiffLimit caps the distinct deployed commits compared with the chosen
+// one, so a form with many targets stays cheap to render.
+const planDiffLimit = 40
+
+func (w *Web) fillPlanCurrent(ctx context.Context, plan *deployPlan) {
+	latest, err := w.Store.LatestDeploys(ctx)
+	if err != nil {
+		return
+	}
+	type diff struct{ ahead, behind int }
+	diffs := map[string]diff{}
+	for _, d := range latest {
+		c := &planCurrent{SHA: d.SHA, Ago: timeAgo(d.At)}
+		if plan.SHA != "" && d.SHA != plan.SHA {
+			df, ok := diffs[d.SHA]
+			if !ok && len(diffs) < planDiffLimit {
+				df.ahead, _ = w.Repo.CountCommits(ctx, d.SHA, plan.SHA)
+				df.behind, _ = w.Repo.CountCommits(ctx, plan.SHA, d.SHA)
+				diffs[d.SHA] = df
+			}
+			c.Ahead, c.Behind = df.ahead, df.behind
+		}
+		plan.Current[deploy.Target(d.Target).Key()] = c
+	}
+}
+
+func planEval(ev *deploy.Evaluation) map[string]*planTarget {
+	out := map[string]*planTarget{}
+	for _, t := range ev.Targets {
+		pt := &planTarget{OK: t.OK()}
+		for _, c := range t.Checks {
+			if !c.OK {
+				pt.Problems = append(pt.Problems, c.Title+strings.TrimSuffix(" — "+c.Detail, " — "))
+			}
+		}
+		for _, a := range ev.Approvals {
+			if !a.Satisfied() && a.Covers(t.Key) {
+				pt.Approval = true
+			}
+		}
+		out[t.Key] = pt
+	}
+	return out
+}
+
+// quickRefs are the newest branches and tags, offered as one-click versions.
+func (w *Web) quickRefs(ctx context.Context) []git.Ref {
+	branches, _, _ := w.Repo.ListRefs(ctx, git.KindBranch, git.RefQuery{Limit: 4})
+	tags, _, _ := w.Repo.ListRefs(ctx, git.KindTag, git.RefQuery{Limit: 3})
+	return append(branches, tags...)
 }
 
 func (w *Web) deployCreate(rw http.ResponseWriter, r *http.Request) {

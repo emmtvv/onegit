@@ -512,11 +512,70 @@ form.inline { display: inline; }
 .job-log .log-line { padding: 0 16px; white-space: pre-wrap; word-break: break-all; min-height: 1.5em; }
 .job-log .log-step { padding: 6px 16px; margin-top: 8px; color: #8ca1ff; font-weight: 600; border-top: 1px solid #262b40; }
 .job-log .log-step:first-child { margin-top: 0; border-top: 0; }
-.deploy-dims { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
-.deploy-dims fieldset { border: 1px solid var(--border); border-radius: 12px; background: var(--bg); padding: 8px 12px; margin: 0; min-width: 200px; flex: 1; }
-.deploy-dims legend { font-weight: 600; padding: 0 4px; }
-.deploy-dims .choices { display: flex; flex-wrap: wrap; gap: 4px 14px; max-height: 260px; overflow-y: auto; }
-.deploy-form .box.pad { display: flex; flex-direction: column; gap: 12px; }
+/* new deployment: choices on the left, the live plan on the right */
+.deploy-lede { margin: 4px 0 16px; }
+.deploy-new { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 20px; align-items: start; }
+.deploy-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.deploy-main .box { margin: 0; }
+.deploy-card { display: flex; flex-direction: column; gap: 16px; }
+.deploy-card h3, .deploy-plan h3 { font: 700 17px var(--display); letter-spacing: -.01em; margin: 0; }
+.deploy-dim { border: 0; padding: 0; margin: 0; min-width: 0; }
+.deploy-dim legend { display: flex; align-items: baseline; gap: 10px; padding: 0; margin-bottom: 8px; }
+.deploy-dim .dim-name { font-weight: 600; }
+.deploy-dim .link-all { color: var(--accent); font-size: 12.5px; }
+.toggles { display: flex; flex-wrap: wrap; gap: 3px; background: var(--bg-inset); border-radius: 18px; padding: 4px; width: fit-content; max-width: 100%;
+  max-height: 260px; overflow-y: auto; }
+.toggles label { position: relative; display: inline-flex; cursor: pointer; }
+.toggles input { position: absolute; opacity: 0; pointer-events: none; }
+.toggles span { padding: 6px 14px; border-radius: 999px; font-family: var(--mono); font-size: 13px; color: var(--fg-muted); }
+.toggles label:hover span { color: var(--fg); }
+.toggles input:checked + span { background: var(--bg); color: var(--fg); box-shadow: var(--card); font-weight: 600; }
+.toggles input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+.quick-refs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -6px; }
+.ref-chip { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); border-radius: 999px;
+  padding: 3px 10px; cursor: pointer; font: 12px var(--mono); }
+.ref-chip:hover { border-color: var(--accent); }
+.ref-chip.active { border-color: var(--accent); background: var(--accent-subtle); color: var(--accent); }
+.ref-kind { font: 11px var(--sans); color: var(--fg-muted); }
+.deploy-commit { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; background: var(--bg-subtle); }
+.deploy-commit[hidden] { display: none; }
+.commit-subject { font-weight: 600; overflow-wrap: anywhere; }
+.deploy-comment { display: flex; flex-direction: column; gap: 6px; font-weight: 600; }
+.deploy-comment input { font-weight: normal; }
+.deploy-plan { position: sticky; top: 16px; margin: 0; }
+.plan-head { display: flex; flex-direction: column; gap: 4px; padding: 18px 20px 14px; background: linear-gradient(180deg, var(--accent-subtle), var(--bg)); }
+.eyebrow { font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-muted); }
+.plan-rows { list-style: none; margin: 0; padding: 0; max-height: 50vh; overflow-y: auto; }
+.plan-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 12px 20px; border-top: 1px solid var(--border-muted); }
+.plan-target { font-size: 13px; font-weight: 600; color: var(--fg); overflow-wrap: anywhere; }
+.plan-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 500; color: var(--fg-muted); }
+.plan-wait { color: #b7791f; }
+.plan-diff { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-muted); }
+.plan-to { color: var(--accent); }
+.plan-delta { font-family: var(--sans); font-size: 11.5px; background: var(--bg-inset); color: var(--fg); border-radius: 999px; padding: 0 8px; }
+.plan-back { background: color-mix(in srgb, #d29922 20%, transparent); color: #b7791f; }
+.plan-when { font-family: var(--sans); }
+.plan-problem { grid-column: 1 / -1; color: var(--del-fg); }
+.plan-empty { padding: 24px 20px; text-align: center; color: var(--fg-muted); border-top: 1px solid var(--border-muted); }
+.plan-foot { display: flex; flex-direction: column; gap: 10px; padding: 16px 20px 20px; border-top: 1px solid var(--border-muted); }
+.plan-foot [hidden] { display: none; }
+.plan-verdict { font-weight: 600; }
+.plan-verdict span, .plan-approval { display: inline-flex; align-items: center; gap: 6px; }
+.plan-approval { align-items: flex-start; font-size: 13px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, #d29922 14%, transparent); }
+.plan-approval .icon { color: #b7791f; margin-top: 2px; }
+.plan-stale { margin: 0; color: var(--fg-muted); }
+.plan-actions { display: flex; gap: 8px; }
+.plan-actions .btn-primary { flex: 1; justify-content: center; padding: 9px 18px; font-weight: 600; }
+.plan-actions .btn-primary:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; filter: none; }
+.btn-attn { border-color: var(--accent); color: var(--accent); }
+.plan-details summary { cursor: pointer; color: var(--fg-muted); }
+.plan-details .box { box-shadow: none; margin: 8px 0 0; background: var(--bg-subtle); }
+.plan-details .box-header { background: transparent; }
+@media (max-width: 900px) {
+  .deploy-new { grid-template-columns: minmax(0, 1fr); }
+  .deploy-plan { position: static; }
+  .plan-rows { max-height: none; }
+}
 .form-actions { display: flex; gap: 8px; }
 .eval-target { padding: 10px 16px; border-top: 1px solid var(--border-muted); }
 .eval-target:first-of-type { border-top: 0; }

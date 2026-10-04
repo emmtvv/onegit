@@ -3,29 +3,143 @@
 {{if not $d.Dims}}
 <div class="box blob-note">No deploy targets are configured yet.</div>
 {{else}}
-<form method="post" action="/deploy" class="form deploy-form">
-  <div class="box pad">
-    <div class="deploy-dims">
-    {{range $d.Dims}}{{$vals := index $d.Values .Name}}{{$sel := index $d.Selected .Name}}
-      <fieldset>
-        <legend>{{.Name}} <button type="button" class="btn btn-sm btn-link" onclick="toggleAll(this)">all</button></legend>
-        <div class="choices">
-        {{$dim := .Name}}{{range $vals}}<label class="check"><input type="checkbox" name="{{$dim}}" value="{{.}}" {{if inlist $sel .}}checked{{end}}> <span class="mono">{{.}}</span></label>{{else}}<span class="muted small">no values found</span>{{end}}
+<p class="deploy-lede muted">The plan on the right shows what changes on every target before you deploy.</p>
+<form method="post" action="/deploy" class="deploy-new" id="deploy-form">
+  <div class="deploy-main">
+    <div class="box pad deploy-card">
+      <h3>What and where</h3>
+      {{range $d.Dims}}{{$vals := index $d.Values .Name}}{{$sel := index $d.Selected .Name}}{{$dim := .Name}}
+      <fieldset class="deploy-dim">
+        <legend><span class="dim-name">{{.Name}}</span><span class="muted small" data-dim-count></span>{{if $vals}}<button type="button" class="btn-link link-all" onclick="toggleAll(this)">all</button>{{end}}</legend>
+        <div class="toggles">
+        {{range $vals}}<label><input type="checkbox" name="{{$dim}}" value="{{.}}" {{if inlist $sel .}}checked{{end}}><span>{{.}}</span></label>{{else}}<span class="muted small">no values found</span>{{end}}
         </div>
       </fieldset>
-    {{end}}
+      {{end}}
     </div>
-    <label>Branch, tag or commit<input name="ref" value="{{$d.Ref}}" class="mono" required></label>
-    <label>Comment <span class="muted small">(optional)</span><input name="comment" value="{{$d.Comment}}"></label>
-    <div class="form-actions">
-      <button class="btn" type="submit" formmethod="get" formaction="/deploy/new" name="check" value="1">Check</button>
-      <button class="btn btn-primary" type="submit">{{template "icon-rocket"}}Request deployment</button>
+    <div class="box pad deploy-card">
+      <h3>Version</h3>
+      <input name="ref" id="deploy-ref" value="{{$d.Ref}}" class="mono" required aria-label="Branch, tag or commit" placeholder="Branch, tag or commit" autocomplete="off">
+      {{with $d.QuickRefs}}<div class="quick-refs">{{range .}}<button type="button" class="ref-chip{{if eq .Name $d.Ref}} active{{end}}" data-ref="{{.Name}}"><span class="ref-kind">{{if .Kind}}tag{{else}}branch{{end}}</span>{{.Name}}</button>{{end}}</div>{{end}}
+      <div class="deploy-commit" id="deploy-commit">
+      {{with $d.Commit}}
+        {{avatar .Author.Name .Author.Email "lg"}}
+        <div class="grow">
+          <div class="commit-subject">{{.Subject}}</div>
+          <div class="muted small"><a class="sha" href="/commit/{{.SHA}}">{{shortsha .SHA}}</a> · {{.Author.Name}} · <span title="{{datetime .Author.When}}">{{ago .Author.When}}</span></div>
+        </div>
+      {{else}}
+        <div class="muted">“{{$d.Ref}}” is not a branch, tag or commit.</div>
+      {{end}}
+      </div>
+      <div class="deploy-commit muted" id="deploy-commit-stale" hidden>Press Check to look up this version.</div>
+      <label class="deploy-comment">Comment <span class="muted small">optional</span><input name="comment" value="{{$d.Comment}}" placeholder="What is going out?"></label>
     </div>
   </div>
+
+  <aside class="box deploy-plan">
+    <div class="plan-head">
+      <span class="eyebrow">Deployment plan</span>
+      <h3 id="plan-title"></h3>
+      <div class="muted small" id="plan-ref"></div>
+    </div>
+    <ul class="plan-rows" id="plan-rows"></ul>
+    <div class="plan-foot">
+      {{with $d.Eval}}
+      <div class="plan-verdict" data-fresh>
+        {{if .Blocked}}<span class="text-del">{{template "icon-x"}} Blocked by failed checks</span>{{else if .RejectedBy}}<span class="text-del">Rejected by {{join .RejectedBy ", "}}</span>{{else if .ApprovalsPending}}<span class="plan-wait">{{template "icon-dot"}} Needs approval before it starts</span>{{else}}<span class="text-add">{{template "icon-check"}} Ready to deploy</span>{{end}}
+      </div>
+      {{range .Approvals}}{{if not .Satisfied}}<div class="plan-approval" data-fresh>{{template "icon-shield"}}<span>{{len .ApprovedBy}} of {{.Required}} from <strong>{{.Approvers}}</strong> <span class="muted small">— {{.Description}}</span></span></div>{{end}}{{end}}
+      {{end}}
+      <p class="plan-stale small" id="plan-stale" hidden>The choice changed since the last check.</p>
+      <div class="plan-actions">
+        <button class="btn" id="plan-check" type="submit" formmethod="get" formaction="/deploy/new" name="check" value="1">Check</button>
+        <button class="btn btn-primary" id="plan-go" type="submit">{{template "icon-rocket"}}<span>Request deployment</span></button>
+      </div>
+      {{with $d.Eval}}<details class="plan-details" data-fresh><summary class="small">All checks</summary>{{template "evaluation" .}}</details>{{end}}
+    </div>
+  </aside>
 </form>
-{{with $d.Eval}}{{template "evaluation" .}}{{end}}
-{{end}}
+<template id="plan-icons"><span data-st="ok">{{template "status-icon" "success"}}</span><span data-st="bad">{{template "status-icon" "failure"}}</span><span data-st="wait">{{template "status-icon" "running"}}</span><span data-st="none">{{template "status-icon" "pending"}}</span></template>
+<script type="application/json" id="plan-data">{{$d.Plan}}</script>
 <script>
-function toggleAll(btn){const boxes=btn.closest('fieldset').querySelectorAll('input[type=checkbox]');const on=[...boxes].some(b=>!b.checked);boxes.forEach(b=>b.checked=on)}
+(() => {
+const P = JSON.parse(document.getElementById('plan-data').textContent);
+const form = document.getElementById('deploy-form'), refIn = document.getElementById('deploy-ref');
+const short = s => s.slice(0, 10);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const icon = k => document.getElementById('plan-icons').content.querySelector(`[data-st="${k}"]`).firstElementChild.cloneNode(true);
+
+// The targets are the cartesian product of the ticked values, like the server builds them.
+function targets() {
+  let out = [{}];
+  for (const dim of P.dims) {
+    const vals = [...form.querySelectorAll(`input[type=checkbox][name="${CSS.escape(dim)}"]:checked`)].map(i => i.value);
+    out = out.flatMap(t => vals.map(v => ({ ...t, [dim]: v })));
+  }
+  return out.map(t => ({ key: Object.keys(t).sort().map(k => k + '=' + t[k]).join(','), label: P.dims.map(d => t[d]).join(' / ') }));
+}
+
+function render() {
+  const ts = targets(), ref = refIn.value.trim(), refFresh = ref === P.ref && P.sha !== '';
+  const keys = ts.map(t => t.key).sort().join('|');
+  const fresh = !!P.eval && ref === P.ref && keys === Object.keys(P.eval).sort().join('|');
+  const to = refFresh ? short(P.sha) : ref || '…';
+
+  form.querySelectorAll('.deploy-dim').forEach(fs => {
+    const boxes = fs.querySelectorAll('input[type=checkbox]'), n = [...boxes].filter(b => b.checked).length;
+    fs.querySelector('[data-dim-count]').textContent = boxes.length ? `${n} of ${boxes.length}` : '';
+    const all = fs.querySelector('.link-all'); if (all) all.textContent = n === boxes.length ? 'none' : 'all';
+  });
+  document.querySelectorAll('.ref-chip').forEach(c => c.classList.toggle('active', c.dataset.ref === ref));
+  document.getElementById('deploy-commit').hidden = ref !== P.ref;
+  document.getElementById('deploy-commit-stale').hidden = ref === P.ref;
+
+  document.getElementById('plan-title').textContent = ts.length ? `${ts.length} target${ts.length === 1 ? '' : 's'} → ${to}` : 'Nothing selected';
+  document.getElementById('plan-ref').textContent = ref ? (refFresh ? `${ref} @ ${short(P.sha)}` : ref) : '';
+
+  const rows = document.getElementById('plan-rows');
+  rows.textContent = '';
+  if (!ts.length) rows.append(el('li', 'plan-empty', 'Pick a value in every dimension.'));
+  let blocked = false, approval = false;
+  for (const t of ts.slice(0, 200)) {
+    const li = el('li', 'plan-row'), cur = P.current[t.key], ev = ref === P.ref && P.eval ? P.eval[t.key] : null;
+    const name = el('a', 'plan-target mono', t.label);
+    name.href = '/deploy/target?key=' + encodeURIComponent(t.key);
+    const st = el('span', 'plan-status');
+    if (!ev) st.append(icon('none'), 'not checked');
+    else if (!ev.ok) { st.append(icon('bad'), 'blocked'); st.classList.add('text-del'); blocked = true; }
+    else if (ev.approval) { st.append(icon('wait'), 'needs approval'); st.classList.add('plan-wait'); approval = true; }
+    else { st.append(icon('ok'), 'ready'); st.classList.add('text-add'); }
+    const diff = el('div', 'plan-diff mono');
+    if (cur) {
+      diff.append(el('span', '', short(cur.sha)), '→', el('span', 'plan-to', to));
+      if (refFresh && cur.sha === P.sha) diff.append(el('span', 'plan-delta', 'already deployed'));
+      else if (refFresh && cur.ahead && !cur.behind) diff.append(el('span', 'plan-delta', `+${cur.ahead} commit${cur.ahead === 1 ? '' : 's'}`));
+      else if (refFresh && cur.behind && !cur.ahead) diff.append(el('span', 'plan-delta plan-back', `rollback ${cur.behind} commit${cur.behind === 1 ? '' : 's'}`));
+      else if (refFresh && cur.behind && cur.ahead) diff.append(el('span', 'plan-delta plan-back', `+${cur.ahead} / −${cur.behind}, diverged`));
+      diff.append(el('span', 'plan-when', `deployed ${cur.ago}`));
+    } else diff.append(el('span', '', 'first deploy'), '→', el('span', 'plan-to', to));
+    li.append(name, st, diff);
+    for (const p of ev?.problems || []) li.append(el('div', 'plan-problem small', p));
+    rows.append(li);
+  }
+  if (ts.length > 200) rows.append(el('li', 'plan-empty', `${ts.length} targets; at most 200 can be deployed at once.`));
+
+  document.querySelectorAll('[data-fresh]').forEach(e => e.hidden = !fresh);
+  document.getElementById('plan-stale').hidden = !P.eval || fresh;
+  document.getElementById('plan-check').classList.toggle('btn-attn', !fresh && ts.length > 0);
+  const go = document.getElementById('plan-go');
+  go.disabled = !ts.length || ts.length > 200 || (fresh && blocked);
+  go.querySelector('span').textContent = fresh && !blocked && !approval ? 'Deploy now' : 'Request deployment';
+}
+
+form.addEventListener('change', render);
+refIn.addEventListener('input', render);
+document.querySelectorAll('.ref-chip').forEach(c => c.addEventListener('click', () => { refIn.value = c.dataset.ref; render(); }));
+window.toggleAll = btn => { const boxes = btn.closest('fieldset').querySelectorAll('input[type=checkbox]'); const on = [...boxes].some(b => !b.checked); boxes.forEach(b => b.checked = on); render(); };
+render();
+})();
 </script>
+{{end}}
 {{end}}

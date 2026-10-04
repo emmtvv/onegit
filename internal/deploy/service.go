@@ -172,6 +172,17 @@ type ApprovalNeed struct {
 
 func (a *ApprovalNeed) Satisfied() bool { return len(a.ApprovedBy) >= a.Required }
 
+// Covers reports whether the need applies to the target with this key. Only
+// a fresh evaluation knows its targets; a stored one covers nothing.
+func (a *ApprovalNeed) Covers(key string) bool {
+	for _, t := range a.targets {
+		if t.Key() == key {
+			return true
+		}
+	}
+	return false
+}
+
 type Evaluation struct {
 	SHA        string          `json:"sha"`
 	RecipeSHA  string          `json:"recipe_sha"`
