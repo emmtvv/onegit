@@ -12,7 +12,7 @@
 <body>
 <header class="topbar">
   <div class="container topbar-inner">
-    <a class="brand" href="/">{{template "icon-logo"}}<span>{{.Cfg.Repo.Name}}</span></a>
+    <a class="brand" href="{{if .User}}/home{{else}}/{{end}}">{{template "icon-logo"}}<span>{{.Cfg.Repo.Name}}</span></a>
     {{if or .User .Cfg.Repo.PublicRead}}<form class="topbar-search" method="get" action="/search" role="search"><input type="search" name="q" placeholder="Search code" aria-label="Search code"></form>{{end}}
     <div class="spacer"></div>
     {{if .User}}
@@ -34,16 +34,17 @@
 {{if or .User .Cfg.Repo.PublicRead}}{{if .Tab}}
 <nav class="tabs">
   <div class="container">
-    <a class="{{if eq .Tab "code"}}active{{end}}" href="/">{{template "icon-code"}}Code</a>
-    <a class="{{if eq .Tab "commits"}}active{{end}}" href="/commits/{{pathesc .Branch}}">{{template "icon-commit"}}Commits</a>
-    <a class="{{if eq .Tab "branches"}}active{{end}}" href="/branches">{{template "icon-branch"}}Branches</a>
-    <a class="{{if eq .Tab "tags"}}active{{end}}" href="/tags">{{template "icon-tag"}}Tags</a>
-    {{if .Projects}}<a class="{{if eq .Tab "projects"}}active{{end}}" href="/projects">{{template "icon-project"}}Projects</a>{{end}}
-    <a class="{{if eq .Tab "pulls"}}active{{end}}" href="/pulls">{{template "icon-pr"}}Pull requests{{if .OpenPulls}}<span class="counter">{{capcount .OpenPulls}}</span>{{end}}</a>
-    {{if .Cfg.Registry.Enabled}}<a class="{{if eq .Tab "packages"}}active{{end}}" href="/packages">{{template "icon-package"}}Packages</a>{{end}}
-    <a class="{{if eq .Tab "actions"}}active{{end}}" href="/actions">{{template "icon-play"}}Actions</a>
-    <a class="{{if eq .Tab "deploy"}}active{{end}}" href="/deploy">{{template "icon-rocket"}}Deployments</a>
-    {{if and .User .User.IsAdmin}}<a class="{{if eq .Tab "admin"}}active{{end}} tab-right" href="/admin/users">{{template "icon-gear"}}Admin</a>{{end}}
+    {{if .User}}<a class="tab-home {{if eq .Tab "home"}}active{{end}}" href="/home">{{template "icon-home"}}Home</a>{{end}}
+    <a class="tab-code {{if eq .Tab "code"}}active{{end}}" href="/">{{template "icon-code"}}Code</a>
+    <a class="tab-commits {{if eq .Tab "commits"}}active{{end}}" href="/commits/{{pathesc .Branch}}">{{template "icon-commit"}}Commits</a>
+    <a class="tab-branch {{if eq .Tab "branches"}}active{{end}}" href="/branches">{{template "icon-branch"}}Branches</a>
+    <a class="tab-tags {{if eq .Tab "tags"}}active{{end}}" href="/tags">{{template "icon-tag"}}Tags</a>
+    {{if .Projects}}<a class="tab-project {{if eq .Tab "projects"}}active{{end}}" href="/projects">{{template "icon-project"}}Projects</a>{{end}}
+    <a class="tab-pr {{if eq .Tab "pulls"}}active{{end}}" href="/pulls">{{template "icon-pr"}}Pull requests{{if .OpenPulls}}<span class="counter">{{capcount .OpenPulls}}</span>{{end}}</a>
+    {{if .Cfg.Registry.Enabled}}<a class="tab-pkg {{if eq .Tab "packages"}}active{{end}}" href="/packages">{{template "icon-package"}}Packages</a>{{end}}
+    <a class="tab-act {{if eq .Tab "actions"}}active{{end}}" href="/actions">{{template "icon-play"}}Actions</a>
+    <a class="tab-dep {{if eq .Tab "deploy"}}active{{end}}" href="/deploy">{{template "icon-rocket"}}Deployments</a>
+    {{if and .User .User.IsAdmin}}<a class="tab-admin {{if eq .Tab "admin"}}active{{end}} tab-right" href="/admin/users">{{template "icon-gear"}}Admin</a>{{end}}
   </div>
 </nav>
 {{end}}{{end}}

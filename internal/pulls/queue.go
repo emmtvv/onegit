@@ -68,6 +68,7 @@ func (s *Service) Process(ctx context.Context) (bool, error) {
 	return s.Store.TryAdvisoryLock(ctx, backgroundLockID, func() error {
 		var errs []error
 		errs = append(errs, s.backfillFiles(ctx))
+		errs = append(errs, s.backfillOwners(ctx))
 		errs = append(errs, s.processAutoMerge(ctx))
 		errs = append(errs, s.processQueues(ctx))
 		return errors.Join(errs...)

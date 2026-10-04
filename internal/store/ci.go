@@ -257,14 +257,16 @@ func (s *Store) RunByID(ctx context.Context, id int64) (*Run, error) {
 
 // RunFilter selects runs, newest first. Listed runs have no ChangedFiles.
 type RunFilter struct {
-	Kind   string
-	SHA    string
-	Ref    string // e.g. refs/heads/main
-	Dir    string // runs whose changed files include something under Dir
-	Limit  int
-	Offset int   // prefer the cursors
-	Before int64 // keyset cursors, see Page
-	After  int64
+	Kind string
+	SHA  string
+	Ref  string // e.g. refs/heads/main
+	Dir  string // runs whose changed files include something under Dir
+	// TriggeredBy: runs started by this user; 0 = anyone.
+	TriggeredBy int64
+	Limit       int
+	Offset      int   // prefer the cursors
+	Before      int64 // keyset cursors, see Page
+	After       int64
 }
 
 func (s *Store) ListRuns(ctx context.Context, f RunFilter) ([]*Run, error) {
@@ -277,6 +279,9 @@ func (s *Store) ListRuns(ctx context.Context, f RunFilter) ([]*Run, error) {
 	}
 	if f.Ref != "" {
 		w.add(`r.ref = ?`, f.Ref)
+	}
+	if f.TriggeredBy != 0 {
+		w.add(`r.triggered_by = ?`, f.TriggeredBy)
 	}
 	w.touchesDir(f.Dir, "r", "ci_run_dirs", "run_id")
 	page := Page{Limit: f.Limit, Offset: f.Offset, Before: f.Before, After: f.After}

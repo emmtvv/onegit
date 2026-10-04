@@ -39,6 +39,11 @@ type Service struct {
 
 	kickOnce sync.Once
 	kick     chan struct{}
+
+	mu sync.Mutex
+	// ownersRev: per base branch, the owner rules every open PR's owners
+	// were last computed with (see backfillOwners).
+	ownersRev map[string]string
 }
 
 // UserError is a validation failure whose message is safe to show.

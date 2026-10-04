@@ -7,6 +7,29 @@ include breaking changes, always described here.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-04
+
+### Added
+
+- A **Home** tab for signed-in users, and where signing in from the front page
+  lands: pull requests waiting on your review as a code owner, your pull
+  requests with their next step (fix a check, resolve conflicts, waiting for
+  approvals, in the merge queue, ready to merge), deployments you can
+  approve, your recent runs and the projects you own.
+- **Projects** shows one column per environment, and each deployment says
+  how many of the project's commits on the default branch it lacks, in red
+  from 10 commits or a week. The list filters by **Mine** and **Needs
+  attention** (failing CI or far behind) and has a Deploy button per project;
+  the project page shows the same per target.
+
+### Changed
+
+- Navigation tab colours no longer depend on which tabs are shown.
+- The code owners of open pull requests are worked out in the background
+  when their files or the owner rules change, and stored for lookup by
+  owner, so the review list on Home needs no git work. New migrations add
+  the table and indexes; they run on start-up.
+
 ## [1.4.1] - 2026-10-04
 
 ### Changed
@@ -203,7 +226,9 @@ First public release.
   amd64 and arm64, `docker-compose.yml` with the full stack, admin CLI
   (`list-users`, `reset-password`, `registry-gc`).
 
-[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/emmtvv/onegit/compare/v1.4.1...v1.5.0
+[1.4.1]: https://github.com/emmtvv/onegit/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/emmtvv/onegit/compare/v1.3.2...v1.4.0
 [1.3.2]: https://github.com/emmtvv/onegit/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/emmtvv/onegit/compare/v1.3.0...v1.3.1

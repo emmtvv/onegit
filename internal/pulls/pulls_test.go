@@ -3,6 +3,7 @@ package pulls_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -581,5 +582,103 @@ func TestMergeStyleValid(t *testing.T) {
 	}
 	if (&pulls.UserError{Msg: "m"}).Error() != "m" {
 		t.Error("UserError message")
+	}
+}
+
+func TestReviewInbox(t *testing.T) {
+	t.Parallel()
+	e := setup(t)
+	lead := testutil.User(t, e.st, "lead", store.RoleWrite)
+	sre := testutil.User(t, e.st, "sre1", store.RoleWrite)
+	dana := testutil.User(t, e.st, "dana", store.RoleWrite)
+	team := &store.Team{Name: "sre"}
+	testutil.Must(t, e.st.SaveTeam(ctx, team))
+	testutil.Must(t, e.st.AddTeamMember(ctx, team.ID, sre.ID))
+	e.work.Commit("owners", map[string]string{"CODEOWNERS": "app/ @lead\n*.md reviewer@example.com\n"})
+	e.push("main")
+	testutil.Must(t, e.st.SaveBranchProtection(ctx, &store.BranchProtection{Pattern: "main", DismissStaleApprovals: true,
+		Owners: "app/ @org/sre\n"}))
+	e.branch("feat", map[string]string{"app/x.go": "x", "README.md": "changed"})
+	p := e.open("feat")
+	process := func() {
+		t.Helper()
+		if _, err := e.svc.Process(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inbox := func(u *store.User) string {
+		t.Helper()
+		teams, _ := e.st.UserTeams(ctx, u.ID)
+		list, err := e.svc.ReviewInbox(ctx, u, teams, 10)
+		testutil.Must(t, err)
+		var out []string
+		for _, w := range list {
+			out = append(out, fmt.Sprintf("#%d %s", w.Pull.ID, w.Reason))
+		}
+		return strings.Join(out, "; ")
+	}
+	want := func(u *store.User, reason string) {
+		t.Helper()
+		if reason != "" {
+			reason = fmt.Sprintf("#%d %s", p.ID, reason)
+		}
+		if got := inbox(u); got != reason {
+			t.Errorf("inbox of %s = %q, want %q", u.Username, got, reason)
+		}
+	}
+	process()
+	want(lead, "code owner of app/")
+	want(sre, "code owner of app/") // through the team, from the branch protection
+	want(e.rev, "code owner of *.md")
+	want(e.author, "")
+
+	// New owner rules on the base branch apply to open PRs.
+	e.work.Commit("owners", map[string]string{"CODEOWNERS": "app/ @lead\n*.md @dana\n"})
+	e.push("main")
+	process()
+	want(dana, "code owner of *.md")
+	want(e.rev, "")
+
+	// One owner's approval covers the whole group.
+	e.review(p, lead, store.ReviewApproved, p.HeadSHA)
+	want(lead, "")
+	want(sre, "")
+	e.review(p, dana, store.ReviewChangesRequested, p.HeadSHA)
+	want(dana, "")
+
+	// New commits bring the PR back to who requested changes and, with
+	// stale approvals dismissed, to who approved.
+	e.work.Git("checkout", "-q", "feat")
+	e.work.Commit("fix", map[string]string{"app/y.go": "y"})
+	e.work.Git("checkout", "-q", "main")
+	e.push("feat")
+	process()
+	want(dana, "new commits since you requested changes")
+	want(lead, "new commits since your approval")
+	want(sre, "code owner of app/")
+
+	testutil.Must(t, e.svc.SetState(ctx, p.ID, e.author, false))
+	want(sre, "")
+	want(dana, "")
+	owners, _ := e.st.PullOwnerKeys(ctx, []int64{p.ID})
+	if len(owners) != 0 {
+		t.Errorf("a closed PR keeps owners: %v", owners)
+	}
+}
+
+func TestOwnerKeys(t *testing.T) {
+	for owner, want := range map[string][]string{
+		"@Dana":             {"user:dana", "team:dana"},
+		"@org/SRE":          {"team:sre"},
+		"Ops@Example.com":   {"email:ops@example.com"},
+		"not-an-owner-name": nil,
+	} {
+		if got := pulls.OwnerKeys(owner); !slices.Equal(got, want) {
+			t.Errorf("OwnerKeys(%q) = %v, want %v", owner, got, want)
+		}
+	}
+	u := &store.User{Username: "Dana", Email: "D@example.com"}
+	if got := pulls.UserKeys(u, []string{"sre"}); !slices.Equal(got, []string{"user:dana", "email:d@example.com", "team:sre"}) {
+		t.Errorf("UserKeys = %v", got)
 	}
 }

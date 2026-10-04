@@ -192,6 +192,36 @@ func TestMonorepoFeaturesEndToEnd(t *testing.T) {
 	if out, err := git(t, w.Dir, "ls-remote", remote, "refs/heads/feature"); err != nil || strings.TrimSpace(out) != "" {
 		t.Errorf("feature branch not deleted: %q %v", out, err)
 	}
+
+	// Home: dev owns services/api, so a PR from someone else that changes it
+	// waits on dev's review until dev gives a verdict.
+	dev.ok("/home", "Hi, DEV", "Your recent runs", "Projects you own", "/projects/api", "No pull request waits on your review")
+	rev := h.createUser(admin, "rev", "write")
+	mustGit(t, w.Dir, "checkout", "-q", "-b", "rev-change", "main")
+	mustGit(t, w.Dir, "pull", "-q", remote, "main")
+	w.Commit("rev change", map[string]string{"services/api/rev.go": "package main\n"})
+	mustGit(t, w.Dir, "push", h.remote("rev", testutil.Password("rev")), "rev-change")
+	if p := rev.post("/pulls", "head", "rev-change", "base", "main", "title", "Rev change"); p.status != http.StatusSeeOther {
+		t.Fatalf("open PR as rev: %d", p.status)
+	}
+	// Owners are recorded by the background loop, a moment after the PR opens.
+	testutil.Eventually(t, 30*time.Second, "the PR to wait on dev's review", func() bool {
+		body := dev.ok("/home")
+		return strings.Contains(body, "Rev change") && strings.Contains(body, "code owner of /services/api/")
+	})
+	rev.ok("/home", "Your pull requests", "Rev change", "No pull request waits on your review")
+	if p := dev.post("/pulls/2/reviews", "state", "approved", "body", "fine"); p.status != http.StatusSeeOther {
+		t.Fatalf("review: %d", p.status)
+	}
+	if body := dev.ok("/home"); strings.Contains(body, "Rev change") {
+		t.Error("an approved PR still waits on the reviewer")
+	}
+
+	// Project filters.
+	if body := dev.ok("/projects?filter=mine", "/projects/api"); strings.Contains(body, "/projects/web") {
+		t.Error("mine lists a project dev does not own")
+	}
+	dev.ok("/projects?filter=attention", "Every project is in order")
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }

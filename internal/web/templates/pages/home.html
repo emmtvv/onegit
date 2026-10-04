@@ -1,0 +1,92 @@
+{{define "content"}}{{$d := .Data}}
+<div id="home" data-live="watch">
+<div class="toolbar home-head">
+  <h2 class="page-title">Hi, {{.User.DisplayName}}</h2>
+  <span class="spacer"></span>
+  {{if $d.Idle}}<span class="muted">Nothing waits on you right now.</span>{{else}}
+  <div class="home-sum">
+    {{with len $d.Inbox}}<a class="home-chip" href="#review"><b class="chip-acc">{{.}}</b>review{{if ne . 1}}s{{end}} waiting</a>{{end}}
+    {{with len $d.Approvals}}<a class="home-chip" href="#approve"><b class="chip-warn">{{.}}</b>deployment{{if ne . 1}}s{{end}} to approve</a>{{end}}
+    {{with $d.Fix}}<a class="home-chip" href="#mine"><b class="chip-bad">{{.}}</b>pull request{{if ne . 1}}s{{end}} to fix</a>{{end}}
+    {{with $d.Ready}}<a class="home-chip" href="#mine"><b class="chip-ok">{{.}}</b>ready to merge</a>{{end}}
+  </div>{{end}}
+</div>
+
+<div class="home-grid">
+  <div class="home-main">
+    <div class="box" id="review">
+      <div class="box-header">{{template "icon-pr"}}<strong>Waiting for your review</strong>{{with len $d.Inbox}}<span class="counter">{{.}}</span>{{end}}<span class="spacer"></span><a class="small" href="/pulls">All open</a></div>
+      {{range $d.Inbox}}{{$p := .Pull}}
+      <div class="pull-row">
+        {{avatar $p.AuthorName $p.AuthorEmail}}
+        <div class="grow">
+          <a class="pull-title muted-link" href="/pulls/{{$p.ID}}">{{$p.Title}}</a>
+          <div class="muted small">#{{$p.ID}} by {{$p.AuthorName}} · updated <span title="{{datetime $p.UpdatedAt}}">{{ago $p.UpdatedAt}}</span></div>
+        </div>
+        <span class="home-why">{{.Reason}}</span>
+      </div>
+      {{else}}<div class="blob-note">No pull request waits on your review. You see the ones whose files you own in CODEOWNERS and the ones that changed since you reviewed them.</div>{{end}}
+    </div>
+
+    <div class="box" id="mine">
+      <div class="box-header">{{template "icon-pr"}}<strong>Your pull requests</strong>{{with len $d.Steps}}<span class="counter">{{.}}</span>{{end}}<span class="spacer"></span>{{if .User.CanWrite}}<a class="small" href="/pulls/new">New pull request</a>{{end}}</div>
+      {{range $d.Steps}}{{$p := .Pull}}
+      <div class="pull-row">
+        <span class="step step-{{.State}}" title="{{.State}}"></span>
+        <div class="grow">
+          <a class="pull-title muted-link" href="/pulls/{{$p.ID}}">{{$p.Title}}</a>
+          <div class="muted small">#{{$p.ID}} · <span class="mono">{{$p.HeadBranch}}</span> → <span class="mono">{{$p.BaseBranch}}</span> · opened <span title="{{datetime $p.CreatedAt}}">{{ago $p.CreatedAt}}</span></div>
+        </div>
+        <a class="step-text step-text-{{.State}}" href="/pulls/{{$p.ID}}">{{.Text}}</a>
+      </div>
+      {{else}}<div class="blob-note">You have no open pull requests.</div>{{end}}
+    </div>
+  </div>
+
+  <div class="home-side">
+    {{if $d.Approvals}}
+    <div class="box" id="approve">
+      <div class="box-header">{{template "icon-rocket"}}<strong>Approve a deployment</strong></div>
+      {{range $d.Approvals}}
+      <div class="run-row">
+        <div class="grow">
+          <a href="/deploy/{{.ID}}"><strong>#{{.ID}}</strong></a> {{range .Labels}}<span class="badge mono">{{.}}</span> {{end}}
+          <div class="muted small"><a class="sha" href="/commit/{{.SHA}}">{{shortsha .SHA}}</a> · {{.RequestedByName}} · <span title="{{datetime .CreatedAt}}">{{ago .CreatedAt}}</span>{{with .Comment}} · {{.}}{{end}}</div>
+        </div>
+        <a class="btn btn-sm btn-primary" href="/deploy/{{.ID}}">Review</a>
+      </div>
+      {{end}}
+    </div>
+    {{end}}
+
+    <div class="box">
+      <div class="box-header">{{template "icon-play"}}<strong>Your recent runs</strong><span class="spacer"></span><a class="small" href="/actions">All runs</a></div>
+      {{range $d.Runs}}
+      <div class="run-row">
+        {{template "status-icon" .Status}}
+        <div class="grow">
+          <a href="/actions/runs/{{.ID}}"><strong>{{.Name}}</strong></a> <span class="muted">#{{.ID}}</span>
+          <div class="muted small">{{.Event}} · <span class="mono">{{refname .Ref}}</span> · <span title="{{datetime .CreatedAt}}">{{ago .CreatedAt}}</span></div>
+        </div>
+      </div>
+      {{else}}<div class="blob-note">Runs you start by pushing or by hand show up here.</div>{{end}}
+    </div>
+
+    {{if $d.Owned}}
+    <div class="box">
+      <div class="box-header">{{template "icon-project"}}<strong>Projects you own</strong>{{if gt $d.OwnedTotal (len $d.Owned)}}<span class="counter">{{$d.OwnedTotal}}</span>{{end}}<span class="spacer"></span><a class="small" href="/projects?filter=mine">All yours</a></div>
+      {{range $d.Owned}}
+      <div class="run-row">
+        {{with .LastRun}}{{template "status-icon" .Status}}{{else}}<span class="st st-skip" title="no CI runs">{{template "icon-skip"}}</span>{{end}}
+        <div class="grow">
+          <a href="/projects/{{pathesc .Name}}"><strong>{{.Name}}</strong></a>
+          <div class="muted small">{{if .OpenPulls}}{{.OpenPulls}} open PR{{if ne .OpenPulls 1}}s{{end}}{{else}}no open PRs{{end}}{{range .Deploys}} · {{.Label}} {{template "drift" .Drift}}{{end}}</div>
+        </div>
+      </div>
+      {{end}}
+    </div>
+    {{end}}
+  </div>
+</div>
+</div>
+{{end}}

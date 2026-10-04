@@ -202,3 +202,10 @@ document.addEventListener('click',e=>{document.querySelectorAll('details.dropdow
   </div>
 </details>
 {{end}}{{end}}
+
+{{/* deployed-cell: projectDeploy, what one project runs in one environment */}}
+{{define "deployed-cell"}}<a class="sha" href="/deploy/target?key={{queryesc .TargetKey}}" title="{{.Label}}: {{.SHA}} by {{.By}}, {{datetime .At}}">{{short .SHA}}</a> <span class="muted small nowrap">{{ago .At}}</span>
+<div>{{template "drift" .Drift}}</div>{{end}}
+
+{{/* drift: drift, how far a deployment is behind the default branch */}}
+{{define "drift"}}{{if .Known}}{{if .Commits}}<span class="drift drift-{{.Level}}" title="{{.Count}} commit{{if ne .Commits 1}}s{{end}} not deployed, the oldest from {{ago .Oldest}}">{{.Count}} behind</span>{{else}}<span class="drift">up to date</span>{{end}}{{end}}{{end}}

@@ -92,8 +92,10 @@ func (w *Web) routes() http.Handler {
 	mux.Handle("GET /refs", read(w.refsJSON))
 	mux.Handle("GET /search", read(w.search))
 
-	// Pull requests
 	login := w.requireLogin
+	mux.Handle("GET /home", login(w.dashboard))
+
+	// Pull requests
 	mux.Handle("GET /pulls", read(w.pullList))
 	mux.Handle("GET /pulls/new", login(w.pullNew))
 	mux.Handle("GET /pulls/queue", read(w.mergeQueue))

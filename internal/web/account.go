@@ -24,7 +24,7 @@ func safeNext(next string) string {
 
 func (w *Web) loginPage(rw http.ResponseWriter, r *http.Request) {
 	if currentUser(r) != nil {
-		http.Redirect(rw, r, "/", http.StatusSeeOther)
+		http.Redirect(rw, r, "/home", http.StatusSeeOther)
 		return
 	}
 	w.render(rw, r, http.StatusOK, "login", &Page{Title: "Sign in", Data: map[string]any{
@@ -66,6 +66,9 @@ func (w *Web) startSession(rw http.ResponseWriter, r *http.Request, u *store.Use
 		Name: auth.SessionCookie, Value: id, Path: "/", HttpOnly: true, Secure: w.secureCookies(),
 		SameSite: http.SameSiteLaxMode, Expires: time.Now().Add(auth.SessionLifetime),
 	})
+	if next == "/" {
+		next = "/home" // signing in from the front page lands on Home
+	}
 	http.Redirect(rw, r, next, http.StatusSeeOther)
 }
 

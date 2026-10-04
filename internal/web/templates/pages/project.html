@@ -22,6 +22,7 @@
   {{range $p.Deploys}}
     <tr><td><a class="mono" href="/deploy/target?key={{queryesc .TargetKey}}"><strong>{{.Label}}</strong></a></td>
       <td><a class="sha" href="/commit/{{.SHA}}">{{shortsha .SHA}}</a></td>
+      <td>{{template "drift" .Drift}}</td>
       <td>{{with .DeploymentID}}<a href="/deploy/{{deint64 .}}">#{{deint64 .}}</a>{{end}}</td>
       <td class="muted">{{.By}}</td>
       <td class="muted" title="{{datetime .At}}">{{ago .At}}</td></tr>

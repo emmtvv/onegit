@@ -66,16 +66,22 @@ const pullCols = `p.id, p.title, p.body, p.author_id, p.head_branch, p.base_bran
 	p.auto_merge_delete_branch,
 	COALESCE(a.username, 'ghost'), COALESCE(a.email, ''), COALESCE(m.username, 'ghost'), COALESCE(am.username, 'ghost')`
 
-const pullFrom = ` FROM pulls p LEFT JOIN users a ON a.id = p.author_id LEFT JOIN users m ON m.id = p.merged_by
+// pullUsers joins the users named by pullCols to "pulls p".
+const pullUsers = ` LEFT JOIN users a ON a.id = p.author_id LEFT JOIN users m ON m.id = p.merged_by
 	LEFT JOIN users am ON am.id = p.auto_merge_by `
 
-func scanPull(row pgx.Row) (*Pull, error) {
+const pullFrom = ` FROM pulls p` + pullUsers
+
+func scanPull(row pgx.Row) (*Pull, error) { return scanPullWith(row) }
+
+// scanPullWith scans pullCols followed by extra columns.
+func scanPullWith(row pgx.Row, extra ...any) (*Pull, error) {
 	var p Pull
-	err := row.Scan(&p.ID, &p.Title, &p.Body, &p.AuthorID, &p.HeadBranch, &p.BaseBranch, &p.HeadSHA, &p.MergeBase, &p.State,
+	err := row.Scan(append([]any{&p.ID, &p.Title, &p.Body, &p.AuthorID, &p.HeadBranch, &p.BaseBranch, &p.HeadSHA, &p.MergeBase, &p.State,
 		&p.MergeSHA, &p.MergeStyle, &p.MergedBy, &p.MergedAt, &p.ClosedAt, &p.CreatedAt, &p.UpdatedAt,
 		&p.FilesSHA, &p.AutoMergeBy, &p.AutoMergeStyle, &p.AutoMergeTitle, &p.AutoMergeMessage,
 		&p.AutoMergeDeleteBranch,
-		&p.AuthorName, &p.AuthorEmail, &p.MergedByName, &p.AutoMergeByName)
+		&p.AuthorName, &p.AuthorEmail, &p.MergedByName, &p.AutoMergeByName}, extra...)...)
 	if err != nil {
 		return nil, notFound(err)
 	}
@@ -127,8 +133,9 @@ func (s *Store) ListPullsIn(ctx context.Context, state, dir string, limit, offse
 }
 
 type PullFilter struct {
-	State string // "open", or "closed" meaning closed+merged
-	Dir   string // PRs that change files under Dir
+	State    string // "open", or "closed" meaning closed+merged
+	Dir      string // PRs that change files under Dir
+	AuthorID int64  // PRs opened by this user; 0 = anyone
 	Page
 }
 
@@ -139,6 +146,9 @@ func (s *Store) FindPulls(ctx context.Context, f PullFilter) ([]*Pull, error) {
 		w.add(`p.state <> 'open'`)
 	} else {
 		w.add(`p.state = 'open'`)
+	}
+	if f.AuthorID != 0 {
+		w.add(`p.author_id = ?`, f.AuthorID)
 	}
 	w.touchesDir(f.Dir, "p", "pull_dirs", "pull_id")
 	tail := f.apply(&w, "p.id")
@@ -234,7 +244,8 @@ func (s *Store) SetPullFiles(ctx context.Context, id int64, files []string, sha 
 		files = []string{}
 	}
 	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `UPDATE pulls SET changed_files = $2, files_sha = $3 WHERE id = $1`, id, files, sha); err != nil {
+		// New files mean new owners: owners_rev '' has them recomputed.
+		if _, err := tx.Exec(ctx, `UPDATE pulls SET changed_files = $2, files_sha = $3, owners_rev = '' WHERE id = $1`, id, files, sha); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `DELETE FROM pull_dirs WHERE pull_id = $1`, id); err != nil {
@@ -457,10 +468,27 @@ func (s *Store) AddPullReview(ctx context.Context, r *PullReview) error {
 		r.PullID, r.ReviewerID, r.State, r.Body, r.CommitSHA).Scan(&r.ID, &r.CreatedAt)
 }
 
+const reviewQuery = `SELECT r.id, r.pull_id, r.reviewer_id, COALESCE(u.username, 'ghost'), COALESCE(u.email, ''), r.state, r.body,
+	r.commit_sha, r.created_at FROM pull_reviews r LEFT JOIN users u ON u.id = r.reviewer_id `
+
 func (s *Store) ListPullReviews(ctx context.Context, pullID int64) ([]*PullReview, error) {
-	rows, err := s.db.Query(ctx,
-		`SELECT r.id, r.pull_id, r.reviewer_id, COALESCE(u.username, 'ghost'), COALESCE(u.email, ''), r.state, r.body, r.commit_sha, r.created_at
-		 FROM pull_reviews r LEFT JOIN users u ON u.id = r.reviewer_id WHERE r.pull_id = $1 ORDER BY r.id`, pullID)
+	return collectReviews(s.db.Query(ctx, reviewQuery+`WHERE r.pull_id = $1 ORDER BY r.id`, pullID))
+}
+
+// ReviewsForPulls lists the reviews of many PRs, oldest first per PR.
+func (s *Store) ReviewsForPulls(ctx context.Context, ids []int64) (map[int64][]*PullReview, error) {
+	list, err := collectReviews(s.db.Query(ctx, reviewQuery+`WHERE r.pull_id = ANY($1) ORDER BY r.pull_id, r.id`, ids))
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int64][]*PullReview, len(ids))
+	for _, r := range list {
+		out[r.PullID] = append(out[r.PullID], r)
+	}
+	return out, nil
+}
+
+func collectReviews(rows pgx.Rows, err error) ([]*PullReview, error) {
 	if err != nil {
 		return nil, err
 	}

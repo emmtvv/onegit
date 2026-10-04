@@ -3,30 +3,43 @@
   <h2 class="page-title">Projects</h2>
   {{if $d.Configured}}<span class="muted small">{{$d.Total}} director{{if eq $d.Total 1}}y{{else}}ies{{end}} matching <code>{{$d.Settings.Pattern}}</code></span>{{end}}
   <span class="spacer"></span>
-  {{if $d.Configured}}<form method="get" action="/projects"><input type="search" name="q" value="{{$d.Q}}" placeholder="Filter projects" aria-label="Filter projects"></form>{{end}}
+  {{if $d.Configured}}
+  <div class="btn-group">
+    <a class="btn btn-sm {{if not $d.Filter}}active{{end}}" href="/projects{{with $d.Q}}?q={{queryesc .}}{{end}}">All</a>
+    {{if .User}}<a class="btn btn-sm {{if eq $d.Filter "mine"}}active{{end}}" href="/projects?filter=mine{{with $d.Q}}&q={{queryesc .}}{{end}}">Mine</a>{{end}}
+    <a class="btn btn-sm {{if eq $d.Filter "attention"}}active{{end}}" href="/projects?filter=attention{{with $d.Q}}&q={{queryesc .}}{{end}}">Needs attention</a>
+  </div>
+  <form method="get" action="/projects">{{with $d.Filter}}<input type="hidden" name="filter" value="{{.}}">{{end}}<input type="search" name="q" value="{{$d.Q}}" placeholder="Filter projects" aria-label="Filter projects"></form>
+  {{end}}
 </div>
 {{if not $d.Configured}}
 <div class="box blob-note">Projects are not set up. An administrator sets the directories that hold projects under <a href="/admin/projects">Admin → Projects</a>.</div>
 {{else}}
 {{$live := "watch"}}{{range $d.Rows}}{{with .LastRun}}{{if inflight .Status}}{{$live = "run"}}{{end}}{{end}}{{end}}
-<div class="box" id="projects" data-live="{{$live}}">
+<div class="box table-scroll" id="projects" data-live="{{$live}}">
   <table class="table projects-table">
-    <thead><tr><th>Project</th><th>Owners</th><th>Last CI on the default branch</th><th>Open PRs</th>{{if $d.Settings.Dimension}}<th>Deployed</th>{{end}}</tr></thead>
-    <tbody>{{range $d.Rows}}
+    <thead><tr>
+      <th>Project</th><th>Owners</th><th>CI on {{$d.Branch}}</th><th>Open PRs</th>
+      {{if $d.Settings.Dimension}}{{range $d.Envs}}<th class="mono">{{.}}</th>{{else}}<th>Deployed</th>{{end}}{{end}}
+      {{if $d.DeployLink}}<th></th>{{end}}
+    </tr></thead>
+    <tbody>{{range $d.Rows}}{{$row := .}}
       <tr>
         <td><a href="/projects/{{pathesc .Name}}"><strong>{{.Name}}</strong></a><div class="muted small mono">{{.Dir}}</div></td>
         <td class="small">{{range $i, $o := .Owners}}{{if $i}}, {{end}}<span class="mono">{{$o}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
-        <td>{{with .LastRun}}<a href="/actions/runs/{{.ID}}" class="nowrap">{{template "status-icon" .Status}} {{.Name}}</a> <span class="muted small" title="{{datetime .CreatedAt}}">{{ago .CreatedAt}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
+        <td>{{with .LastRun}}<a href="/actions/runs/{{.ID}}" class="nowrap">{{template "status-icon" .Status}} {{.Name}}</a> <span class="muted small nowrap" title="{{datetime .CreatedAt}}">{{ago .CreatedAt}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
         <td>{{if .OpenPulls}}<a href="/pulls?project={{queryesc .Name}}">{{.OpenPulls}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
-        {{if $d.Settings.Dimension}}<td>{{range .Deploys}}<a class="deploy-chip" href="/deploy/target?key={{queryesc .TargetKey}}" title="{{.Label}}: {{.SHA}} by {{.By}}, {{ago .At}}"><span class="label mono">{{.Label}}</span> <span class="sha">{{short .SHA}}</span></a> {{else}}<span class="muted">—</span>{{end}}</td>{{end}}
+        {{if $d.Settings.Dimension}}{{range .Cells}}<td>{{with .}}{{template "deployed-cell" .}}{{else}}<span class="muted">—</span>{{end}}</td>{{else}}<td><span class="muted">—</span></td>{{end}}{{end}}
+        {{if $d.DeployLink}}<td class="right"><a class="btn btn-sm" href="{{$d.DeployLink}}{{queryesc .Name}}">{{template "icon-rocket"}}Deploy</a></td>{{end}}
       </tr>
-    {{else}}<tr><td colspan="5" class="muted">No projects{{if $d.Q}} match “{{$d.Q}}”{{else}} found on the default branch{{end}}.</td></tr>{{end}}
+    {{else}}<tr><td colspan="{{add 5 (len $d.Envs)}}" class="muted">{{if eq $d.Filter "attention"}}Every project is in order: CI passes on {{$d.Branch}} and nothing is far behind.{{else if eq $d.Filter "mine"}}You do not own any project{{if $d.Q}} matching “{{$d.Q}}”{{end}}. Code owners come from CODEOWNERS.{{else}}No projects{{if $d.Q}} match “{{$d.Q}}”{{else}} found on the default branch{{end}}.{{end}}</td></tr>{{end}}
     </tbody>
   </table>
 </div>
+{{if $d.Settings.Dimension}}<p class="muted small">Behind: commits under the project's directory on {{$d.Branch}} that the deployment does not have. Shown in red from 10 commits or a week.</p>{{end}}
 <div class="pager">
-  {{if gt $d.Page 1}}<a class="btn" href="?q={{queryesc $d.Q}}&page={{sub $d.Page 1}}">Previous</a>{{end}}
-  {{if $d.HasNext}}<a class="btn" href="?q={{queryesc $d.Q}}&page={{add $d.Page 1}}">Next</a>{{end}}
+  {{if gt $d.Page 1}}<a class="btn" href="?q={{queryesc $d.Q}}&filter={{queryesc $d.Filter}}&page={{sub $d.Page 1}}">Previous</a>{{end}}
+  {{if $d.HasNext}}<a class="btn" href="?q={{queryesc $d.Q}}&filter={{queryesc $d.Filter}}&page={{add $d.Page 1}}">Next</a>{{end}}
 </div>
 {{end}}
 {{end}}

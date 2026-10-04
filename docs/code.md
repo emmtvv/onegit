@@ -37,8 +37,34 @@ projects.
 
 The **Projects** tab lists them with their code owners, the last CI run on
 the default branch that touched them, their open pull requests and, when a
-deploy dimension holds the project names, what is deployed to each target.
+deploy dimension holds the project names, what is deployed in each
+environment, one column per environment. Each deployment shows how far it is
+**behind**: the commits under the project's directory on the default branch
+that it does not have. It turns red from 10 commits, or when the oldest
+missing commit is a week old. **Mine** keeps the projects you own in
+CODEOWNERS (directly or through a team); **Needs attention** keeps those whose
+CI fails on the default branch or that are far behind.
 A project's page adds its README, its open pull requests, its recent CI runs
 and links to its code, history and search. Pull requests and pipeline runs
 can be filtered by project (`/pulls?project=api`, `/actions?project=api`): a
 pull request or run belongs to every project it changes files in.
+
+## Home
+
+Signed-in users get a **Home** tab, and signing in from the front page lands
+there. It gathers what waits on you:
+
+- **Waiting for your review**: open pull requests whose changed files you own
+  in CODEOWNERS (or the branch protection's owners) while no owner has
+  approved the current head, and pull requests with new commits since you
+  requested changes (or since your approval, when the branch dismisses stale
+  approvals). Owners are worked out in the background when a PR's files or
+  the owner rules change, so a new PR appears here a few seconds after it
+  opens.
+- **Your pull requests** with their next step: failed check, conflicts,
+  changes requested, waiting for approvals or code owners, checks running, in
+  the merge queue, or ready to merge.
+- **Approve a deployment**: pending deployments you may approve and have not
+  reviewed yet.
+- Your recent pipeline runs, and the projects you own with their CI status
+  and how far each environment is behind.
