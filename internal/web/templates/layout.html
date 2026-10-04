@@ -17,7 +17,7 @@
     <div class="spacer"></div>
     {{if .User}}
       <details class="dropdown user-menu">
-        <summary>{{avatar .User.Username .User.Email}}<span>{{.User.Username}}</span></summary>
+        <summary>{{useravatar .User}}<span>{{.User.Username}}</span></summary>
         <div class="menu menu-right">
           <div class="menu-header">Signed in as <strong>{{.User.Username}}</strong></div>
           <a href="/settings">Settings</a>

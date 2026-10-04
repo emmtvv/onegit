@@ -13,6 +13,24 @@
       </dl>
     </div>
     <div class="box pad">
+      <h2>Avatar</h2>
+      <div class="avatar-edit">
+        {{useravatar .User "xl"}}
+        {{if eq .Data.AvatarSource "oidc"}}
+          <p class="muted">Your avatar comes from {{.Cfg.OIDC.DisplayName}} and is updated each time you sign in. Change it there.</p>
+        {{else}}
+          <div class="form">
+            <form method="post" action="/settings/avatar" enctype="multipart/form-data" class="avatar-upload">
+              <input type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" required>
+              <button class="btn" type="submit">Upload</button>
+            </form>
+            <p class="muted small">PNG, JPEG, GIF or WebP, up to 1 MB. Without one, your initials are shown.</p>
+            {{if eq .Data.AvatarSource "manual"}}<form method="post" action="/settings/avatar/delete"><button class="btn btn-sm btn-danger" type="submit">Remove avatar</button></form>{{end}}
+          </div>
+        {{end}}
+      </div>
+    </div>
+    <div class="box pad">
       <h2>{{if .User.PasswordHash}}Change password{{else}}Set a password{{end}}</h2>
       {{if not .User.PasswordHash}}<p class="muted">You sign in with {{.Cfg.OIDC.DisplayName}}. For git over HTTPS, an <a href="/settings/tokens">access token</a> is usually a better choice than a password.</p>{{end}}
       <form method="post" action="/settings/password" class="form narrow">

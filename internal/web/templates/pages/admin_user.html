@@ -1,7 +1,7 @@
 {{define "content"}}{{template "admin-nav" "users"}}{{$u := .Data.Target}}{{$self := eq $u.ID .User.ID}}
 <p><a href="/admin/users">← All users</a></p>
 <div class="box pad">
-  <h2>{{avatar $u.Username $u.Email "lg"}} {{$u.Username}}</h2>
+  <h2>{{useravatar $u "lg"}} {{$u.Username}}</h2>
   <form method="post" action="/admin/users/{{$u.ID}}" class="form grid-form">
     <label>Full name<input name="full_name" value="{{$u.FullName}}"></label>
     <label>Email<input name="email" type="email" value="{{$u.Email}}"></label>

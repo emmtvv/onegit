@@ -7,6 +7,9 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +20,7 @@ import (
 	"time"
 
 	"onegit/internal/auth"
+	"onegit/internal/avatars"
 	"onegit/internal/config"
 	"onegit/internal/store"
 	"onegit/internal/testutil"
@@ -73,6 +77,12 @@ func newFakeIdP(t *testing.T) *fakeIdP {
 			"access_token": "at-" + r.Form.Get("code"), "token_type": "Bearer", "expires_in": 60,
 			"id_token": f.sign(claims),
 		})
+	})
+	mux.HandleFunc("/picture.png", func(w http.ResponseWriter, r *http.Request) {
+		w.Write(testPNG)
+	})
+	mux.HandleFunc("/picture.svg", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`))
 	})
 	mux.HandleFunc("/userinfo", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
@@ -218,6 +228,88 @@ func TestOIDCWithoutAutoRegister(t *testing.T) {
 	got, err := f.login(t, o, map[string]any{"sub": sub, "groups": []any{}})
 	if err != nil || got.ID != u.ID || got.Role != store.RoleWrite {
 		t.Errorf("linked login = %+v, %v", got, err)
+	}
+}
+
+// testPNG is a 1x1 PNG.
+var testPNG, _ = base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+
+func TestOIDCAvatar(t *testing.T) {
+	t.Parallel()
+	f, cfg, st := oidcSetup(t)
+	o, err := auth.NewOIDC(ctx, cfg, st)
+	testutil.Must(t, err)
+	bs := testutil.Blob(t, cfg)
+	av := &avatars.Service{Store: st, Blob: bs}
+	o.Avatars = av
+	image := func(id int64) string {
+		t.Helper()
+		_, obj, err := av.Open(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer obj.Close()
+		b, _ := io.ReadAll(obj)
+		return string(b)
+	}
+
+	// A user's own avatar is replaced by the IdP picture, which is then
+	// marked as managed by the IdP.
+	u, err := f.login(t, o, map[string]any{"sub": "pic"})
+	testutil.Must(t, err)
+	testutil.Must(t, av.Set(ctx, u.ID, store.AvatarManual, []byte("GIF89a")))
+	_, err = f.login(t, o, map[string]any{"sub": "pic", "picture": f.srv.URL + "/picture.png"})
+	testutil.Must(t, err)
+	a, err := st.Avatar(ctx, u.ID)
+	if err != nil || a.Source != store.AvatarOIDC || a.ContentType != "image/png" || image(u.ID) != string(testPNG) {
+		t.Fatalf("avatar after login with picture = %+v, %v", a, err)
+	}
+
+	// A picture that is not a safe image, or unreachable, keeps the old one.
+	for _, pic := range []string{f.srv.URL + "/picture.svg", f.srv.URL + "/missing.png", "file:///etc/passwd"} {
+		_, err = f.login(t, o, map[string]any{"sub": "pic", "picture": pic})
+		testutil.Must(t, err)
+		if a, err := st.Avatar(ctx, u.ID); err != nil || a.Source != store.AvatarOIDC || image(u.ID) != string(testPNG) {
+			t.Errorf("after picture %s: avatar = %+v, %v", pic, a, err)
+		}
+	}
+
+	// Without a picture claim the IdP avatar goes away, from S3 too.
+	_, err = f.login(t, o, map[string]any{"sub": "pic"})
+	testutil.Must(t, err)
+	if _, err := st.Avatar(ctx, u.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("IdP avatar kept without picture claim: %v", err)
+	}
+	if ok, _ := bs.Exists(ctx, fmt.Sprintf("avatars/%d", u.ID)); ok {
+		t.Error("IdP avatar image left in S3")
+	}
+	// Manual ones stay.
+	testutil.Must(t, av.Set(ctx, u.ID, store.AvatarManual, testPNG))
+	_, err = f.login(t, o, map[string]any{"sub": "pic"})
+	testutil.Must(t, err)
+	if a, err := st.Avatar(ctx, u.ID); err != nil || a.Source != store.AvatarManual {
+		t.Errorf("manual avatar after login without picture = %+v, %v", a, err)
+	}
+
+	// A user registered earlier gets the picture at their next sign-in,
+	// also when the IdP sends it only in userinfo, and only for their sub.
+	old, err := f.login(t, o, map[string]any{"sub": "thin", "groups": []any{}})
+	testutil.Must(t, err)
+	f.mu.Lock()
+	f.userinfo = map[string]any{"sub": "someone-else", "picture": f.srv.URL + "/picture.png"}
+	f.mu.Unlock()
+	_, err = f.login(t, o, map[string]any{"sub": "thin", "groups": []any{}})
+	testutil.Must(t, err)
+	if _, err := st.Avatar(ctx, old.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("picture taken from another subject's userinfo: %v", err)
+	}
+	f.mu.Lock()
+	f.userinfo = map[string]any{"sub": "thin", "picture": f.srv.URL + "/picture.png"}
+	f.mu.Unlock()
+	_, err = f.login(t, o, map[string]any{"sub": "thin", "groups": []any{}})
+	testutil.Must(t, err)
+	if a, err := st.Avatar(ctx, old.ID); err != nil || a.Source != store.AvatarOIDC || image(old.ID) != string(testPNG) {
+		t.Errorf("avatar from userinfo = %+v, %v", a, err)
 	}
 }
 

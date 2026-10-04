@@ -129,7 +129,18 @@ func (w *Web) oidcCallback(rw http.ResponseWriter, r *http.Request) {
 // ---- settings ----
 
 func (w *Web) settingsProfile(rw http.ResponseWriter, r *http.Request) {
-	w.render(rw, r, http.StatusOK, "settings_profile", &Page{Title: "Settings", Tab: "settings"})
+	av, err := w.Store.Avatar(r.Context(), currentUser(r).ID)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		w.serverError(rw, r, err)
+		return
+	}
+	var source store.AvatarSource
+	if av != nil {
+		source = av.Source
+	}
+	w.render(rw, r, http.StatusOK, "settings_profile", &Page{Title: "Settings", Tab: "settings", Data: map[string]any{
+		"AvatarSource": string(source),
+	}})
 }
 
 func (w *Web) settingsPassword(rw http.ResponseWriter, r *http.Request) {
@@ -337,13 +348,23 @@ func (w *Web) adminUpdateUser(rw http.ResponseWriter, r *http.Request) {
 		}
 		u.MustChangePassword = !self
 	}
-	if r.FormValue("unlink_sso") == "on" {
+	unlink := r.FormValue("unlink_sso") == "on" && u.OIDCSubject != nil
+	if unlink {
 		u.OIDCSubject = nil
 	}
 	if err := w.Store.UpdateUser(r.Context(), u); err != nil {
 		w.serverError(rw, r, err)
 		return
 	}
+	if unlink {
+		// The IdP no longer manages the picture: the user keeps it but may
+		// now change it.
+		if err := w.Store.SetAvatarSource(r.Context(), u.ID, store.AvatarManual); err != nil {
+			w.serverError(rw, r, err)
+			return
+		}
+	}
+	w.avatars.invalidate() // the email the avatar is matched by may have changed
 	w.redirectFlash(rw, r, "/admin/users/"+strconv.FormatInt(u.ID, 10), "Saved.")
 }
 
@@ -360,5 +381,9 @@ func (w *Web) adminDeleteUser(rw http.ResponseWriter, r *http.Request) {
 		w.serverError(rw, r, err)
 		return
 	}
+	if err := w.Avatars.Purge(r.Context(), u.ID); err != nil {
+		w.Log.Warn("delete avatar of a deleted user", "user", u.Username, "err", err)
+	}
+	w.avatars.invalidate()
 	w.redirectFlash(rw, r, "/admin/users", "User "+u.Username+" deleted.")
 }

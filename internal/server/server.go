@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"onegit/internal/auth"
+	"onegit/internal/avatars"
 	"onegit/internal/blob"
 	"onegit/internal/ci"
 	"onegit/internal/config"
@@ -37,9 +38,11 @@ type Server struct {
 	KV    *kv.KV
 	Blob  *blob.Store
 	Repo  *git.Repo
-	Auth  *auth.Service
-	OIDC  *auth.OIDC
-	Pulls *pulls.Service
+
+	Avatars *avatars.Service
+	Auth    *auth.Service
+	OIDC    *auth.OIDC
+	Pulls   *pulls.Service
 	// Registry is nil when the container registry is disabled.
 	Registry *registry.Service
 	CI       *ci.Service
@@ -82,6 +85,7 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*Server, er
 		Auth:          &auth.Service{Store: st, KV: kvs},
 		internalToken: auth.RandomString(32),
 	}
+	s.Avatars = &avatars.Service{Store: st, Blob: bs}
 	s.Pulls = &pulls.Service{Store: st, Repo: repo, KV: kvs, Log: log, BaseURL: cfg.HTTP.BaseURL}
 	if err := s.bootstrapAdmin(ctx); err != nil {
 		return nil, err
@@ -106,6 +110,7 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*Server, er
 		if s.OIDC, err = auth.NewOIDC(ctx, cfg, st); err != nil {
 			return nil, err
 		}
+		s.OIDC.Avatars = s.Avatars
 	}
 	return s, nil
 }
@@ -177,6 +182,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		return err
 	}
 	s.web, err = web.New(web.Deps{Cfg: s.Cfg, Store: s.Store, KV: s.KV, Repo: s.Repo, Auth: s.Auth, OIDC: s.OIDC, Pulls: s.Pulls,
+		Avatars:  s.Avatars,
 		Registry: s.Registry, CI: s.CI, Deploy: s.Deploy, Log: s.Log,
 		Projects: &projects.Service{Store: s.Store, Repo: s.Repo, Cfg: s.Cfg}})
 	if err != nil {

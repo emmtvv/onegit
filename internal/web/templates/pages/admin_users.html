@@ -7,7 +7,7 @@
     <tbody>
     {{range .Data.Users}}
       <tr class="{{if not .Active}}inactive{{end}}">
-        <td>{{avatar .Username .Email}} <a href="/admin/users/{{.ID}}"><strong>{{.Username}}</strong></a> <span class="muted">{{.FullName}}</span></td>
+        <td>{{useravatar .}} <a href="/admin/users/{{.ID}}"><strong>{{.Username}}</strong></a> <span class="muted">{{.FullName}}</span></td>
         <td>{{.Email}}</td>
         <td><span class="badge badge-{{.Role}}">{{.Role}}</span>{{if not .Active}} <span class="badge badge-off">disabled</span>{{end}}</td>
         <td class="muted">{{if .HasSSO}}SSO{{end}}{{if and .HasSSO .PasswordHash}} + {{end}}{{if .PasswordHash}}password{{end}}</td>

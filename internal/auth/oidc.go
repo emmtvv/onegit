@@ -4,13 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/url"
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
 
+	"onegit/internal/avatars"
 	"onegit/internal/config"
 	"onegit/internal/store"
 )
@@ -21,6 +27,9 @@ type OIDC struct {
 	provider *oidc.Provider
 	verifier *oidc.IDTokenVerifier
 	oauth    oauth2.Config
+
+	// Avatars, when set, receives the IdP's picture claim.
+	Avatars *avatars.Service
 }
 
 func NewOIDC(ctx context.Context, cfg *config.Config, st *store.Store) (*OIDC, error) {
@@ -54,6 +63,7 @@ type oidcClaims struct {
 	Email             string `json:"email"`
 	Name              string `json:"name"`
 	PreferredUsername string `json:"preferred_username"`
+	Picture           string `json:"picture"`
 	Nonce             string `json:"nonce"`
 }
 
@@ -83,11 +93,17 @@ func (o *OIDC) Exchange(ctx context.Context, code, nonce, verifier string) (*sto
 	if c.Nonce != nonce {
 		return nil, errors.New("nonce mismatch")
 	}
-	// Groups often live only in userinfo.
-	if _, ok := all[o.cfg.OIDC.GroupsClaim]; !ok {
-		if ui, err := o.provider.UserInfo(ctx, oauth2.StaticTokenSource(tok)); err == nil {
-			_ = ui.Claims(&all) // without them the groups claim is simply absent
+	// Groups and the picture often live only in userinfo ("thin" ID tokens).
+	_, hasGroups := all[o.cfg.OIDC.GroupsClaim]
+	if !hasGroups || (c.Picture == "" && o.Avatars != nil) {
+		// Userinfo claims count only for the same subject (OIDC Core 5.3.2);
+		// without them the groups claim and picture are simply absent.
+		if ui, err := o.provider.UserInfo(ctx, oauth2.StaticTokenSource(tok)); err == nil && ui.Subject == c.Subject {
+			_ = ui.Claims(&all)
 		}
+	}
+	if c.Picture == "" {
+		c.Picture, _ = all["picture"].(string)
 	}
 	groups := claimStrings(all[o.cfg.OIDC.GroupsClaim])
 	role := o.roleFor(groups)
@@ -103,6 +119,9 @@ func (o *OIDC) Exchange(ctx context.Context, code, nonce, verifier string) (*sto
 			u.Role = role
 		}
 		if err := o.store.UpdateUser(ctx, u); err != nil {
+			return nil, err
+		}
+		if err := o.syncAvatar(ctx, u, c.Picture); err != nil {
 			return nil, err
 		}
 		return u, o.syncTeams(ctx, u, all)
@@ -130,6 +149,9 @@ func (o *OIDC) Exchange(ctx context.Context, code, nonce, verifier string) (*sto
 			if err := o.store.CreateUser(ctx, u); err != nil {
 				return nil, err
 			}
+			if err := o.syncAvatar(ctx, u, c.Picture); err != nil {
+				return nil, err
+			}
 			return u, o.syncTeams(ctx, u, all)
 		}
 	}
@@ -148,6 +170,49 @@ func (o *OIDC) syncTeams(ctx context.Context, u *store.User, claims map[string]a
 		groups = []string{}
 	}
 	return o.store.SyncOIDCTeams(ctx, u.ID, groups)
+}
+
+// syncAvatar copies the IdP's picture into the user's avatar, which then
+// cannot be changed in onegit. Without a picture claim an earlier IdP
+// avatar is dropped and the user may upload their own. A picture that
+// cannot be fetched leaves the stored avatar alone and never fails login.
+func (o *OIDC) syncAvatar(ctx context.Context, u *store.User, picture string) error {
+	if o.Avatars == nil {
+		return nil
+	}
+	if picture == "" {
+		return o.Avatars.Delete(ctx, u.ID, store.AvatarOIDC)
+	}
+	data, err := fetchPicture(ctx, picture)
+	if err == nil {
+		err = o.Avatars.Set(ctx, u.ID, store.AvatarOIDC, data)
+	}
+	if err != nil {
+		slog.Warn("oidc: store picture", "user", u.Username, "err", err)
+	}
+	return nil
+}
+
+func fetchPicture(ctx context.Context, rawURL string) ([]byte, error) {
+	if u, err := url.Parse(rawURL); err != nil || (u.Scheme != "https" && u.Scheme != "http") {
+		return nil, fmt.Errorf("unsupported picture URL %q", rawURL)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("picture: %s", resp.Status)
+	}
+	// One byte over the limit is enough for Set to refuse it.
+	return io.ReadAll(io.LimitReader(resp.Body, avatars.MaxSize+1))
 }
 
 // roleFor maps IdP groups to a role. Empty result means "don't touch".

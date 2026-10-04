@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"onegit/internal/auth"
+	"onegit/internal/avatars"
 	"onegit/internal/ci"
 	"onegit/internal/config"
 	"onegit/internal/deploy"
@@ -29,13 +30,14 @@ import (
 var assets embed.FS
 
 type Deps struct {
-	Cfg   *config.Config
-	Store *store.Store
-	KV    *kv.KV
-	Repo  *git.Repo
-	Auth  *auth.Service
-	OIDC  *auth.OIDC // nil when disabled
-	Pulls *pulls.Service
+	Cfg     *config.Config
+	Store   *store.Store
+	KV      *kv.KV
+	Repo    *git.Repo
+	Auth    *auth.Service
+	OIDC    *auth.OIDC // nil when disabled
+	Avatars *avatars.Service
+	Pulls   *pulls.Service
 	// Registry is nil when the container registry is disabled.
 	Registry *registry.Service
 	CI       *ci.Service
@@ -49,12 +51,13 @@ type Web struct {
 	tmpl    map[string]*templateSet
 	handler http.Handler
 	heavy   chan struct{} // slots for heavy git work, see acquireHeavy
+	avatars *avatarIndex
 }
 
 func New(d Deps) (*Web, error) {
-	w := &Web{Deps: d, heavy: make(chan struct{}, heavySlots)}
+	w := &Web{Deps: d, heavy: make(chan struct{}, heavySlots), avatars: &avatarIndex{store: d.Store}}
 	var err error
-	if w.tmpl, err = loadTemplates(); err != nil {
+	if w.tmpl, err = loadTemplates(w.avatarFuncs()); err != nil {
 		return nil, err
 	}
 	w.handler = w.routes()
@@ -87,6 +90,7 @@ func (w *Web) routes() http.Handler {
 	mux.Handle("GET /blame/{rest...}", read(w.blame))
 	mux.Handle("GET /commits/{rest...}", read(w.commits))
 	mux.Handle("GET /commit/{sha}", read(w.commit))
+	mux.Handle("GET /avatars/{id}", read(w.serveAvatar))
 	mux.Handle("GET /branches", read(w.branches))
 	mux.Handle("GET /tags", read(w.tags))
 	mux.Handle("GET /refs", read(w.refsJSON))
@@ -145,6 +149,8 @@ func (w *Web) routes() http.Handler {
 	// User settings
 	mux.Handle("GET /settings", login(w.settingsProfile))
 	mux.Handle("POST /settings/password", login(w.settingsPassword))
+	mux.Handle("POST /settings/avatar", login(w.settingsAvatar))
+	mux.Handle("POST /settings/avatar/delete", login(w.deleteAvatar))
 	mux.Handle("GET /settings/tokens", login(w.settingsTokens))
 	mux.Handle("POST /settings/tokens", login(w.addToken))
 	mux.Handle("POST /settings/tokens/{id}/delete", login(w.deleteToken))

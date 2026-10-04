@@ -74,6 +74,14 @@ re-synced on every sign-in. Teams with an "OIDC group" (Admin → Teams) get
 their membership from the groups claim the same way. SSO users use access
 tokens for git and the registry.
 
+When the IdP sends a `picture` claim (scope `profile`; read from the ID token,
+or from userinfo when absent), the image is copied
+on every sign-in and becomes the user's avatar; such an avatar cannot be
+changed in onegit. Without the claim, users upload their own avatar under
+Settings (PNG, JPEG, GIF or WebP, up to 1 MB). Unlinking the SSO identity
+keeps the picture and makes it editable. Avatar images are stored in the S3
+bucket under `avatars/<user id>`.
+
 ## CI, deployments and registry
 
 | Variable | Default | |

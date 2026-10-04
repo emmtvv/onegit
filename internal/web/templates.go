@@ -25,8 +25,13 @@ func (ts *templateSet) Execute(w io.Writer, data any) error {
 }
 
 // loadTemplates builds one template set per page: layout + partials + page.
-func loadTemplates() (map[string]*templateSet, error) {
-	base, err := template.New("").Funcs(funcs).ParseFS(assets, "templates/layout.html", "templates/partials/*.html")
+// extra overrides entries of funcs, e.g. ones bound to a Web.
+func loadTemplates(extra ...template.FuncMap) (map[string]*templateSet, error) {
+	base := template.New("").Funcs(funcs)
+	for _, fm := range extra {
+		base.Funcs(fm)
+	}
+	base, err := base.ParseFS(assets, "templates/layout.html", "templates/partials/*.html")
 	if err != nil {
 		return nil, err
 	}
@@ -58,9 +63,12 @@ var funcs = template.FuncMap{
 	"queryesc": url.QueryEscape,
 	"crumbs":   crumbs,
 	"avatar":   avatar,
-	"fileicon": fileIcon,
-	"diricon":  dirIcon,
-	"add":      func(a, b int) int { return a + b },
+	// useravatar is avatar for a user account; Web binds both to stored
+	// avatars (see avatarFuncs).
+	"useravatar": func(u *store.User, size ...string) template.HTML { return avatar(u.Username, u.Email, size...) },
+	"fileicon":   fileIcon,
+	"diricon":    dirIcon,
+	"add":        func(a, b int) int { return a + b },
 	// capcount shows a count capped at store.PullCountCap as "10000+".
 	"capcount": func(n int) string {
 		if n > store.PullCountCap {

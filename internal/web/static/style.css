@@ -114,6 +114,11 @@ main { min-height: calc(100vh - 190px); }
 .avatar { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%;
   background: hsl(var(--hue, 220) 55% 55%); color: #fff; font-size: 11px; font-weight: 600; flex-shrink: 0; vertical-align: middle; }
 .avatar-lg { width: 32px; height: 32px; font-size: 14px; }
+.avatar-xl { width: 96px; height: 96px; font-size: 40px; }
+img.avatar { object-fit: cover; background: var(--bg); }
+.avatar-edit { display: flex; gap: 20px; align-items: flex-start; }
+.avatar-edit p { margin: 0; }
+.avatar-upload { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
 /* ---- buttons ---- */
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 16px; font: 500 14px/20px var(--sans); color: var(--fg);
