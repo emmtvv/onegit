@@ -82,6 +82,10 @@ tokens for git and the registry.
 | `ONEGIT_REGISTRY_ENABLED` | `true` | Container registry at `/v2/` |
 | `ONEGIT_REGISTRY_MAX_BLOB_SIZE` | unlimited | Per layer: `500MiB`, `2GB`, or bytes |
 | `ONEGIT_REGISTRY_MAX_TOTAL_SIZE` | unlimited | Whole registry |
+| `ONEGIT_CI_MAX_ARTIFACT_SIZE` | `1GiB` | Per job's artifact archive; empty = unlimited |
+| `ONEGIT_CI_ARTIFACT_RETENTION_DAYS` | `30` | How long artifacts are kept when a job sets no `expire-in` |
+| `ONEGIT_CI_MAX_CACHE_SIZE` | `20GiB` | Total size of CI caches; the least recently used are evicted |
+| `ONEGIT_CI_CACHE_RETENTION_DAYS` | `7` | Caches unused this long are removed |
 
 Runners are configured separately (see [ci.md](ci.md#runners)):
 

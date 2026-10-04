@@ -174,6 +174,10 @@ type jobRun struct {
 	log    *logStream
 	cancel context.CancelCauseFunc
 	steps  []store.StepState
+	// cacheKey is the computed cache key; cacheHit means it was restored
+	// exactly, so there is nothing new to save.
+	cacheKey string
+	cacheHit bool
 }
 
 var errCancelled = errors.New("cancelled on the server")
@@ -230,10 +234,13 @@ func (r *Runner) workspace(a *ci.Assignment) string {
 func (jr *jobRun) run(ctx context.Context) (status, message string) {
 	a := jr.a
 	ws := jr.r.workspace(a)
+	jr.steps = append(jr.steps, store.StepState{Name: "Set up job", Status: "pending"})
 	for _, st := range a.Steps {
 		jr.steps = append(jr.steps, store.StepState{Name: stepName(st), Status: "pending"})
 	}
-	jr.steps = append([]store.StepState{{Name: "Set up job", Status: "pending"}}, jr.steps...)
+	if jr.hasPost() {
+		jr.steps = append(jr.steps, store.StepState{Name: postStepName, Status: "pending"})
+	}
 
 	now := time.Now()
 	jr.steps[0].Status, jr.steps[0].StartedAt = "running", &now
@@ -251,7 +258,16 @@ func (jr *jobRun) run(ctx context.Context) (status, message string) {
 	}
 	jr.steps[0].Status = "success"
 
-	for i, st := range a.Steps {
+	status, message = jr.runSteps(ctx, ws, env)
+	if jr.hasPost() {
+		status, message = jr.postJob(ctx, ws, status, message)
+	}
+	jr.reportSteps()
+	return status, message
+}
+
+func (jr *jobRun) runSteps(ctx context.Context, ws string, env []string) (status, message string) {
+	for i, st := range jr.a.Steps {
 		idx := i + 1
 		if ctx.Err() != nil {
 			jr.skipRest(idx)
@@ -277,7 +293,6 @@ func (jr *jobRun) run(ctx context.Context) (status, message string) {
 			return jr.outcome(ctx, "failure", fmt.Sprintf("step %q failed: %v", stepName(st), err))
 		}
 	}
-	jr.reportSteps()
 	return "success", ""
 }
 
@@ -298,7 +313,7 @@ func (jr *jobRun) outcome(ctx context.Context, status, message string) (string, 
 
 func (jr *jobRun) skipRest(from int) {
 	for i := from; i < len(jr.steps); i++ {
-		if jr.steps[i].Status == "pending" {
+		if jr.steps[i].Status == "pending" && !(jr.steps[i].Name == postStepName && i == len(jr.steps)-1) {
 			jr.steps[i].Status = "skipped"
 		}
 	}
@@ -352,6 +367,15 @@ func (jr *jobRun) prepare(ctx context.Context, ws string) ([]string, error) {
 		return nil, err
 	}
 	env = append(env, "ONEGIT_CHANGED_FILES="+changed)
+	for _, d := range a.Downloads {
+		fmt.Fprintf(jr.log, "Downloading artifacts of %s (%s)\n", d.Job, humanSize(d.Size))
+		if err := jr.r.fetchArchive(ctx, fmt.Sprintf("/api/runner/v1/jobs/%d/artifacts/%d", a.ID, d.ID), a.Token, ws); err != nil {
+			return nil, fmt.Errorf("artifacts of %s: %w", d.Job, err)
+		}
+	}
+	if a.Cache != nil {
+		jr.restoreCache(ctx, ws)
+	}
 	return env, nil
 }
 

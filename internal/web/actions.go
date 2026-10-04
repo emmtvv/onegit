@@ -2,6 +2,8 @@ package web
 
 import (
 	"encoding/json"
+	"io"
+	"mime"
 	"net/http"
 	"sort"
 	"strconv"
@@ -26,7 +28,8 @@ func (w *Web) actions(rw http.ResponseWriter, r *http.Request) {
 	if kind != "deploy" {
 		kind = "pipeline"
 	}
-	runs, err := w.Store.ListRuns(ctx, store.RunFilter{Kind: kind, Limit: runsPerPage + 1, Offset: (page - 1) * runsPerPage})
+	project, dir := w.projectDir(r)
+	runs, err := w.Store.ListRuns(ctx, store.RunFilter{Kind: kind, Dir: dir, Limit: runsPerPage + 1, Offset: (page - 1) * runsPerPage})
 	if err != nil {
 		w.serverError(rw, r, err)
 		return
@@ -50,9 +53,14 @@ func (w *Web) actions(rw http.ResponseWriter, r *http.Request) {
 		}
 		sort.Strings(manual)
 	}
+	var schedules []ci.Schedule
+	if kind == "pipeline" && page == 1 && project == "" {
+		schedules = w.CI.Schedules(ctx)
+	}
+	projectList, _, _ := w.Projects.List(ctx)
 	w.render(rw, r, http.StatusOK, "actions", &Page{Title: "Actions", Tab: "actions", Data: map[string]any{
 		"Runs": views, "Page": page, "HasNext": hasNext, "Kind": kind, "Manual": manual, "Branch": branch,
-		"CanWrite": currentUser(r).CanWrite(),
+		"CanWrite": currentUser(r).CanWrite(), "Schedules": schedules, "Project": project, "Projects": projectList,
 	}})
 }
 
@@ -68,8 +76,13 @@ func (w *Web) runPage(rw http.ResponseWriter, r *http.Request) {
 		w.serverError(rw, r, err)
 		return
 	}
+	artifacts, err := w.Store.ArtifactsForRun(r.Context(), id)
+	if err != nil {
+		w.serverError(rw, r, err)
+		return
+	}
 	w.render(rw, r, http.StatusOK, "run", &Page{Title: run.Name + " #" + strconv.FormatInt(run.ID, 10), Tab: "actions", Data: map[string]any{
-		"Run": run, "Jobs": jobs, "CanWrite": currentUser(r).CanWrite(),
+		"Run": run, "Jobs": jobs, "CanWrite": currentUser(r).CanWrite(), "Artifacts": artifacts,
 	}})
 }
 
@@ -88,8 +101,16 @@ func (w *Web) jobPage(rw http.ResponseWriter, r *http.Request) {
 	jobs, _ := w.Store.JobsForRun(r.Context(), run.ID)
 	var spec ci.JobPayload
 	_ = json.Unmarshal(job.Spec, &spec) // an unreadable spec just shows no steps
+	var artifact *store.Artifact
+	if arts, err := w.Store.ArtifactsForRun(r.Context(), run.ID); err == nil {
+		for _, a := range arts {
+			if a.JobID == job.ID {
+				artifact = a
+			}
+		}
+	}
 	w.render(rw, r, http.StatusOK, "job", &Page{Title: job.Name + " · " + run.Name, Tab: "actions", Data: map[string]any{
-		"Run": run, "Job": job, "Jobs": jobs, "Spec": spec, "CanWrite": currentUser(r).CanWrite(),
+		"Run": run, "Job": job, "Jobs": jobs, "Spec": spec, "CanWrite": currentUser(r).CanWrite(), "Artifact": artifact,
 	}})
 }
 
@@ -202,4 +223,37 @@ func (w *Web) runManual(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(rw, r, ci.RunURL(run.ID), http.StatusSeeOther)
+}
+
+// artifactDownload serves a job's artifacts as tar.gz.
+func (w *Web) artifactDownload(rw http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	a, err := w.Store.ArtifactByID(r.Context(), id)
+	if err != nil {
+		w.fail(rw, r, err)
+		return
+	}
+	if a.Expired() || w.CI.Blob == nil {
+		w.errorPage(rw, r, http.StatusGone, "These artifacts have expired.")
+		return
+	}
+	rc, size, err := w.CI.Blob.Get(r.Context(), a.BlobKey)
+	if err != nil {
+		w.errorPage(rw, r, http.StatusGone, "These artifacts are no longer stored.")
+		return
+	}
+	defer rc.Close()
+	name := strings.Map(func(c rune) rune {
+		if c == '/' || c == '\\' || c == '"' || c < ' ' {
+			return '_'
+		}
+		return c
+	}, a.JobName)
+	h := rw.Header()
+	h.Set("Content-Type", "application/gzip")
+	h.Set("Content-Length", strconv.FormatInt(size, 10))
+	h.Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name + "-artifacts.tar.gz"}))
+	if _, err := io.Copy(rw, rc); err != nil && r.Context().Err() == nil {
+		w.Log.Warn("send artifacts", "id", id, "err", err)
+	}
 }

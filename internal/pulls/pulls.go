@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"onegit/internal/git"
@@ -25,6 +26,19 @@ type Service struct {
 	KV      *kv.KV
 	Log     *slog.Logger
 	BaseURL string
+
+	// Set by the server; nil in tests that do not need them.
+	//
+	// BaseUpdated runs after a merge moved a branch on the server (no git
+	// hooks run then): push pipelines start here.
+	BaseUpdated func(ctx context.Context, by *store.User, updates []hooks.RefUpdate)
+	// StartChecks runs the merge queue pipelines on a candidate commit
+	// (before is the commit it was built on); CancelChecks stops them.
+	StartChecks  func(ctx context.Context, sha, before, ref, base string, pullID int64, by *int64)
+	CancelChecks func(ctx context.Context, sha string)
+
+	kickOnce sync.Once
+	kick     chan struct{}
 }
 
 // UserError is a validation failure whose message is safe to show.
@@ -158,9 +172,19 @@ func (s *Service) syncOne(ctx context.Context, id int64, branch string, up hooks
 	if err != nil && !errors.Is(err, errNoChange) {
 		return err
 	}
-	if event != "" {
-		return s.Store.AddPullEvent(ctx, id, actor, event, data)
+	if event == "" {
+		return nil
 	}
+	if err := s.Store.AddPullEvent(ctx, id, actor, event, data); err != nil {
+		return err
+	}
+	switch event {
+	case "pushed":
+		s.dequeue(ctx, id, nil, store.QueueRemoved, "new commits were pushed")
+	case "head_deleted":
+		s.dequeue(ctx, id, nil, store.QueueRemoved, "the head branch was deleted")
+	}
+	s.Kick()
 	return nil
 }
 
@@ -208,6 +232,8 @@ func (s *Service) SetState(ctx context.Context, id int64, u *store.User, open bo
 	kind := "closed"
 	if open {
 		kind = "reopened"
+	} else {
+		s.dequeue(ctx, id, &u.ID, store.QueueRemoved, "the pull request was closed")
 	}
 	return s.Store.AddPullEvent(ctx, id, &u.ID, kind, nil)
 }

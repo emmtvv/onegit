@@ -1,0 +1,27 @@
+{{define "content"}}{{$d := .Data}}
+<div class="toolbar">
+  <h2 class="page-title">Projects</h2>
+  {{if $d.Configured}}<span class="muted small">{{$d.Total}} director{{if eq $d.Total 1}}y{{else}}ies{{end}} matching <code>{{$d.Settings.Pattern}}</code></span>{{end}}
+  <span class="spacer"></span>
+  {{if $d.Configured}}<form method="get" action="/projects"><input type="search" name="q" value="{{$d.Q}}" placeholder="Filter projects" aria-label="Filter projects"></form>{{end}}
+</div>
+{{if not $d.Configured}}
+<div class="box blob-note">Projects are not set up. An administrator sets the directories that hold projects under <a href="/admin/projects">Admin → Projects</a>.</div>
+{{else}}
+<div class="box">
+  <table class="table projects-table">
+    <thead><tr><th>Project</th><th>Owners</th><th>Last CI on the default branch</th><th>Open PRs</th>{{if $d.Settings.Dimension}}<th>Deployed</th>{{end}}</tr></thead>
+    <tbody>{{range $d.Rows}}
+      <tr>
+        <td><a href="/projects/{{pathesc .Name}}"><strong>{{.Name}}</strong></a><div class="muted small mono">{{.Dir}}</div></td>
+        <td class="small">{{range $i, $o := .Owners}}{{if $i}}, {{end}}<span class="mono">{{$o}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
+        <td>{{with .LastRun}}<a href="/actions/runs/{{.ID}}" class="nowrap">{{template "status-icon" .Status}} {{.Name}}</a> <span class="muted small" title="{{datetime .CreatedAt}}">{{ago .CreatedAt}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
+        <td>{{if .OpenPulls}}<a href="/pulls?project={{queryesc .Name}}">{{.OpenPulls}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
+        {{if $d.Settings.Dimension}}<td>{{range .Deploys}}<a class="deploy-chip" href="/deploy/target?key={{queryesc .TargetKey}}" title="{{.Label}}: {{.SHA}} by {{.By}}, {{ago .At}}"><span class="label mono">{{.Label}}</span> <span class="sha">{{short .SHA}}</span></a> {{else}}<span class="muted">—</span>{{end}}</td>{{end}}
+      </tr>
+    {{else}}<tr><td colspan="5" class="muted">No projects{{if $d.Q}} match “{{$d.Q}}”{{else}} found on the default branch{{end}}.</td></tr>{{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+{{end}}

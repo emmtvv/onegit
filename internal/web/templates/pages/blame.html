@@ -1,0 +1,43 @@
+{{define "content"}}{{$d := .Data}}{{$ref := $d.Ref.Name}}
+<div class="toolbar">
+  {{template "breadcrumbs" (dict "Ref" $ref "Path" $d.Path "Repo" .Cfg.Repo.Name)}}
+  <span class="spacer"></span>
+  <div class="btn-group">
+    <a class="btn btn-sm" href="/blob/{{pathesc $ref $d.Path}}">Code</a>
+    <a class="btn btn-sm active" href="/blame/{{pathesc $ref $d.Path}}">Blame</a>
+  </div>
+  <a class="btn btn-sm" href="/commits/{{pathesc $ref $d.Path}}">{{template "icon-history"}}History</a>
+</div>
+<div class="box">
+  <div class="box-header file-header">{{fileicon $d.Path}}<span class="muted">{{bytes $d.Size}}</span>
+    <span class="spacer"></span><span class="muted small blame-legend">Older <span class="age age-0"></span><span class="age age-5"></span><span class="age age-9"></span> Newer</span></div>
+  {{if $d.TooLarge}}<div class="blob-note">This file is too large to blame. <a href="/raw/{{pathesc $ref $d.Path}}">View raw</a></div>
+  {{else if $d.Binary}}<div class="blob-note">Binary files cannot be blamed.</div>
+  {{else}}
+  <div class="blame chroma">
+    <table><tbody>
+    {{range $d.Rows}}{{$h := .Hunk}}{{$age := .Age}}
+      {{range $i, $l := .Lines}}
+      <tr{{if eq $i 0}} class="blame-start"{{end}}>
+        {{if eq $i 0}}<td class="blame-commit" rowspan="{{len $h.Lines}}">
+          <div class="blame-info">
+            <span class="muted small" title="{{datetime $h.Commit.Author.When}}">{{ago $h.Commit.Author.When}}</span>
+            <a class="muted-link blame-subject" href="/commit/{{$h.Commit.SHA}}" title="{{$h.Commit.Subject}}">{{$h.Commit.Subject}}</a>
+            {{if $h.PrevSHA}}<a class="blame-prev" href="/blame/{{pathesc $h.PrevSHA $h.PrevPath}}#L{{$l.No}}" title="Blame before this change">{{template "icon-history"}}</a>{{end}}
+          </div>
+          <div class="muted small">{{avatar $h.Commit.Author.Name $h.Commit.Author.Email}} {{$h.Commit.Author.Name}}</div>
+        </td>{{end}}
+        <td class="age age-{{$age}}"></td>
+        <td class="blame-ln" id="L{{$l.No}}"><a href="#L{{$l.No}}">{{$l.No}}</a></td>
+        <td class="blame-code">{{$l.Code}}</td>
+      </tr>
+      {{end}}
+    {{end}}
+    </tbody></table>
+  </div>
+  {{end}}
+</div>
+<script>
+(function(){function h(){document.querySelectorAll('.blame tr.line-hl').forEach(e=>e.classList.remove('line-hl'));const m=location.hash.match(/^#L(\d+)$/);if(!m)return;const td=document.getElementById('L'+m[1]);if(td){td.parentElement.classList.add('line-hl');td.scrollIntoView({block:'center'})}}window.addEventListener('hashchange',h);h()})();
+</script>
+{{end}}

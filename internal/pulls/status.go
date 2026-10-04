@@ -53,6 +53,8 @@ type Status struct {
 	OwnerGroups    []*OwnerGroup
 	Checks         []*store.CommitStatus
 	RequiredChecks []string
+	// QueueRequired: the base branch takes PRs only through the merge queue.
+	QueueRequired bool
 
 	Blockers []string
 }
@@ -61,6 +63,13 @@ func (st *Status) Mergeable() bool { return len(st.Blockers) == 0 }
 
 // Status evaluates an open PR.
 func (s *Service) Status(ctx context.Context, p *store.Pull, reviews []*store.PullReview) (*Status, error) {
+	return s.status(ctx, p, reviews, false)
+}
+
+// status evaluates an open PR. For the merge queue (inQueue), conflicts and
+// checks are judged on the queue's candidate commit instead, so they do not
+// block here.
+func (s *Service) status(ctx context.Context, p *store.Pull, reviews []*store.PullReview, inQueue bool) (*Status, error) {
 	st := &Status{}
 	_, err := s.Repo.ResolveCommit(ctx, "refs/heads/"+p.HeadBranch)
 	st.HeadExists = err == nil
@@ -79,7 +88,7 @@ func (s *Service) Status(ctx context.Context, p *store.Pull, reviews []*store.Pu
 		return nil, err
 	}
 	st.Conflicts = mr.Conflicts
-	if len(st.Conflicts) > 0 {
+	if len(st.Conflicts) > 0 && !inQueue {
 		st.Blockers = append(st.Blockers, "This branch has conflicts that must be resolved.")
 	}
 
@@ -98,6 +107,7 @@ func (s *Service) Status(ctx context.Context, p *store.Pull, reviews []*store.Pu
 	}
 
 	if prot := st.Protection; prot != nil {
+		st.QueueRequired = prot.RequireMergeQueue
 		st.Required = prot.RequiredApprovals
 		if st.Approvals < st.Required {
 			n := st.Required - st.Approvals
@@ -121,6 +131,9 @@ func (s *Service) Status(ctx context.Context, p *store.Pull, reviews []*store.Pu
 		}
 		st.RequiredChecks = prot.RequiredChecks
 		for _, name := range prot.RequiredChecks {
+			if inQueue {
+				break
+			}
 			var found *store.CommitStatus
 			for _, c := range st.Checks {
 				if c.Context == name {

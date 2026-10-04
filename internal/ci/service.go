@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"onegit/internal/blob"
 	"onegit/internal/config"
 	"onegit/internal/git"
 	"onegit/internal/hooks"
@@ -28,11 +29,15 @@ type Service struct {
 	Repo  *git.Repo
 	Cfg   *config.Config
 	Log   *slog.Logger
+	// Blob stores artifacts and caches; nil disables them.
+	Blob *blob.Store
 
 	// SecretsFor returns the decrypted secrets for a deploy target.
 	SecretsFor func(ctx context.Context, target map[string]string) (map[string]string, error)
 	// OnRunFinished is called once a run reaches its final status.
 	OnRunFinished func(ctx context.Context, run *store.Run)
+	// OnCheckDone is called when a commit status reaches a final state.
+	OnCheckDone func(sha string)
 }
 
 // JobPayload is stored in ci_jobs.spec.
@@ -41,6 +46,9 @@ type JobPayload struct {
 	Env        map[string]string `json:"env"`
 	TimeoutSec int               `json:"timeout"`
 	Context    string            `json:"context,omitempty"` // commit status context (pipelines)
+	Matrix     map[string]string `json:"matrix,omitempty"`
+	Artifacts  *ArtifactsSpec    `json:"artifacts,omitempty"`
+	Cache      *CacheSpec        `json:"cache,omitempty"`
 	RecipeFile string            `json:"recipe_file,omitempty"`
 	RecipeSHA  string            `json:"recipe_sha,omitempty"`
 	Tooling    bool              `json:"tooling,omitempty"`
@@ -150,6 +158,31 @@ func (s *Service) OnPull(ctx context.Context, p *store.Pull, by *int64) {
 	s.startMatching(ctx, p.HeadSHA, p.MergeBase, ev, &id, by)
 }
 
+// RunMergeQueue runs the merge queue pipelines on a candidate commit built
+// on before for base. It returns once the runs (and their pending commit
+// statuses) exist.
+func (s *Service) RunMergeQueue(ctx context.Context, sha, before, ref, base string, pullID int64, by *int64) {
+	ev := Event{Name: "merge_queue", Ref: ref, BaseRef: base}
+	ev.Changed, ev.ChangedKnown = s.changed(ctx, before, sha)
+	s.startMatching(ctx, sha, before, ev, &pullID, by)
+}
+
+// CancelMergeQueue cancels the unfinished merge queue runs of a candidate.
+func (s *Service) CancelMergeQueue(ctx context.Context, sha string) {
+	runs, err := s.Store.ListRuns(ctx, store.RunFilter{Kind: "pipeline", SHA: sha, Limit: 100})
+	if err != nil {
+		s.Log.Warn("list merge queue runs", "sha", sha, "err", err)
+		return
+	}
+	for _, r := range runs {
+		if r.Event == "merge_queue" && r.FinishedAt == nil {
+			if err := s.Cancel(ctx, r.ID); err != nil {
+				s.Log.Warn("cancel merge queue run", "run", r.ID, "err", err)
+			}
+		}
+	}
+}
+
 // RunManual starts a pipeline with a "manual" trigger on a branch.
 func (s *Service) RunManual(ctx context.Context, u *store.User, file, branch string) (*store.Run, error) {
 	sha, err := s.Repo.ResolveCommit(ctx, "refs/heads/"+branch)
@@ -214,24 +247,17 @@ func (s *Service) startPipeline(ctx context.Context, p *Pipeline, file string, e
 	var jobs []*store.Job
 	for _, n := range names {
 		js := p.Jobs[n]
-		timeout := time.Duration(js.Timeout)
-		if timeout <= 0 {
-			timeout = defaultTimeout
+		combos := []map[string]string{nil}
+		if js.Matrix != nil {
+			combos = js.Matrix.Combinations()
 		}
-		payload := JobPayload{Steps: js.Steps, Env: merge(p.Env, js.Env), TimeoutSec: int(timeout.Seconds()),
-			Context: p.Name + " / " + n}
-		spec, err := json.Marshal(payload)
-		if err != nil {
-			return nil, err
+		for _, combo := range combos {
+			j, err := buildJob(p, n, js, combo, ev.Name)
+			if err != nil {
+				return nil, err
+			}
+			jobs = append(jobs, j)
 		}
-		j := &store.Job{Name: n, Kind: "ci", Needs: js.Needs, RunsOn: js.RunsOn, Spec: spec, Status: store.JobQueued}
-		switch {
-		case len(js.Events) > 0 && !contains(js.Events, ev.Name):
-			j.Status, j.Message = store.JobSkipped, "not run for "+ev.Name+" events"
-		case len(js.Needs) > 0:
-			j.Status = store.JobWaiting
-		}
-		jobs = append(jobs, j)
 	}
 	if err := s.Store.CreateRun(ctx, run, jobs); err != nil {
 		return nil, err
@@ -245,6 +271,68 @@ func (s *Service) startPipeline(ctx context.Context, p *Pipeline, file string, e
 		run = r
 	}
 	return run, nil
+}
+
+// buildJob turns a pipeline job (one matrix combination of it) into a
+// queued, waiting or skipped job.
+func buildJob(p *Pipeline, name string, js *JobSpec, combo map[string]string, event string) (*store.Job, error) {
+	timeout := time.Duration(js.Timeout)
+	if timeout <= 0 {
+		timeout = defaultTimeout
+	}
+	x := func(s string) string { return ExpandMatrix(s, combo) }
+	env := merge(p.Env, js.Env)
+	for k, v := range env {
+		env[k] = x(v)
+	}
+	jobName, base := name, ""
+	if js.Matrix != nil {
+		jobName, base = name+" ("+js.Matrix.Label(combo)+")", name
+		for k, v := range combo {
+			env["MATRIX_"+strings.ToUpper(strings.ReplaceAll(k, "-", "_"))] = v
+		}
+	}
+	steps := make([]Step, len(js.Steps))
+	for i, st := range js.Steps {
+		st.Name, st.Run, st.WorkingDir = x(st.Name), x(st.Run), x(st.WorkingDir)
+		if len(st.Env) > 0 {
+			e := map[string]string{}
+			for k, v := range st.Env {
+				e[k] = x(v)
+			}
+			st.Env = e
+		}
+		steps[i] = st
+	}
+	payload := JobPayload{Steps: steps, Env: env, TimeoutSec: int(timeout.Seconds()),
+		Context: p.Name + " / " + jobName, Matrix: combo, Artifacts: js.Artifacts}
+	if js.Cache != nil {
+		c := *js.Cache
+		c.Key = x(c.Key)
+		payload.Cache = &c
+	}
+	spec, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	runsOn := make([]string, len(js.RunsOn))
+	for i, l := range js.RunsOn {
+		runsOn[i] = x(l)
+	}
+	j := &store.Job{Name: jobName, BaseName: base, Kind: "ci", Needs: js.Needs, RunsOn: runsOn, Spec: spec, Status: store.JobQueued}
+	switch {
+	case !eventAllowed(js.Events, event):
+		j.Status, j.Message = store.JobSkipped, "not run for "+event+" events"
+	case len(js.Needs) > 0:
+		j.Status = store.JobWaiting
+	}
+	return j, nil
+}
+
+// eventAllowed applies a job's events filter; the merge queue validates pull
+// requests, so jobs for pull_request run there too.
+func eventAllowed(events []string, event string) bool {
+	return len(events) == 0 || contains(events, event) || event == "merge_queue" && contains(events, "pull_request")
 }
 
 // ---- results ----
@@ -316,6 +404,10 @@ func (s *Service) setStatus(ctx context.Context, run *store.Run, j *store.Job) {
 	id := j.ID
 	if err := s.Store.SetCommitStatus(ctx, st, &id); err != nil {
 		s.Log.Warn("set commit status", "err", err)
+		return
+	}
+	if st.State != "pending" && s.OnCheckDone != nil {
+		s.OnCheckDone(run.SHA)
 	}
 }
 

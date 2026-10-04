@@ -137,9 +137,12 @@ type StepState struct {
 }
 
 type Job struct {
-	ID              int64
-	RunID           int64
-	Name            string
+	ID    int64
+	RunID int64
+	Name  string
+	// BaseName is the job's name in the pipeline when Name carries matrix
+	// values ("test" for "test (1.22, linux)"); empty otherwise.
+	BaseName        string
 	Kind            string // "ci" or "deploy"
 	Needs           []string
 	RunsOn          []string
@@ -156,6 +159,14 @@ type Job struct {
 	CreatedAt       time.Time
 	StartedAt       *time.Time
 	FinishedAt      *time.Time
+}
+
+// Base is the name needs refer to.
+func (j *Job) Base() string {
+	if j.BaseName != "" {
+		return j.BaseName
+	}
+	return j.Name
 }
 
 func (j *Job) Duration() time.Duration {
@@ -183,12 +194,12 @@ func scanRun(row pgx.Row) (*Run, error) {
 	return &r, nil
 }
 
-const jobCols = `id, run_id, name, kind, needs, runs_on, spec, target, target_key, status, steps, runner_id, runner_name,
+const jobCols = `id, run_id, name, base_name, kind, needs, runs_on, spec, target, target_key, status, steps, runner_id, runner_name,
 	cancel_requested, message, heartbeat_at, created_at, started_at, finished_at`
 
 func scanJob(row pgx.Row) (*Job, error) {
 	var j Job
-	err := row.Scan(&j.ID, &j.RunID, &j.Name, &j.Kind, &j.Needs, &j.RunsOn, &j.Spec, &j.Target, &j.TargetKey, &j.Status,
+	err := row.Scan(&j.ID, &j.RunID, &j.Name, &j.BaseName, &j.Kind, &j.Needs, &j.RunsOn, &j.Spec, &j.Target, &j.TargetKey, &j.Status,
 		&j.Steps, &j.RunnerID, &j.RunnerName, &j.CancelRequested, &j.Message, &j.HeartbeatAt, &j.CreatedAt, &j.StartedAt, &j.FinishedAt)
 	if err != nil {
 		return nil, notFound(err)
@@ -219,9 +230,9 @@ func (s *Store) CreateRun(ctx context.Context, r *Run, jobs []*Job) error {
 				j.RunsOn = []string{}
 			}
 			if err := tx.QueryRow(ctx, `INSERT INTO ci_jobs (run_id, name, kind, needs, runs_on, spec, target, target_key, status, message,
-				finished_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CASE WHEN $9 = 'skipped' THEN now() END)
+				finished_at, base_name) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CASE WHEN $9 = 'skipped' THEN now() END, $11)
 				RETURNING id, created_at, finished_at`,
-				j.RunID, j.Name, j.Kind, j.Needs, j.RunsOn, j.Spec, j.Target, j.TargetKey, j.Status, j.Message).
+				j.RunID, j.Name, j.Kind, j.Needs, j.RunsOn, j.Spec, j.Target, j.TargetKey, j.Status, j.Message, j.BaseName).
 				Scan(&j.ID, &j.CreatedAt, &j.FinishedAt); err != nil {
 				return err
 			}
@@ -237,13 +248,17 @@ func (s *Store) RunByID(ctx context.Context, id int64) (*Run, error) {
 type RunFilter struct {
 	Kind   string
 	SHA    string
+	Ref    string // e.g. refs/heads/main
+	Dir    string // runs whose changed files include something under Dir
 	Limit  int
 	Offset int
 }
 
 func (s *Store) ListRuns(ctx context.Context, f RunFilter) ([]*Run, error) {
 	rows, err := s.db.Query(ctx, `SELECT `+runCols+runFrom+`WHERE ($1 = '' OR r.kind = $1) AND ($2 = '' OR r.sha = $2)
-		ORDER BY r.id DESC LIMIT $3 OFFSET $4`, f.Kind, f.SHA, f.Limit, f.Offset)
+		AND ($5 = '' OR r.ref = $5)
+		AND ($6 = '' OR EXISTS (SELECT 1 FROM unnest(r.changed_files) f WHERE starts_with(f, $6)))
+		ORDER BY r.id DESC LIMIT $3 OFFSET $4`, f.Kind, f.SHA, f.Limit, f.Offset, f.Ref, dirPrefix(f.Dir))
 	if err != nil {
 		return nil, err
 	}
@@ -321,7 +336,7 @@ func (s *Store) ClaimJob(ctx context.Context, r *Runner, tokenHash string, accep
 			}
 			if err := tx.QueryRow(ctx, `UPDATE ci_jobs SET status = 'running', runner_id = $2, runner_name = $3, token_hash = $4,
 				started_at = now(), heartbeat_at = now() WHERE id = $1 RETURNING `+jobCols, j.ID, r.ID, r.Name, tokenHash).
-				Scan(&j.ID, &j.RunID, &j.Name, &j.Kind, &j.Needs, &j.RunsOn, &j.Spec, &j.Target, &j.TargetKey, &j.Status,
+				Scan(&j.ID, &j.RunID, &j.Name, &j.BaseName, &j.Kind, &j.Needs, &j.RunsOn, &j.Spec, &j.Target, &j.TargetKey, &j.Status,
 					&j.Steps, &j.RunnerID, &j.RunnerName, &j.CancelRequested, &j.Message, &j.HeartbeatAt, &j.CreatedAt,
 					&j.StartedAt, &j.FinishedAt); err != nil {
 				return err
@@ -437,9 +452,9 @@ func advanceRun(ctx context.Context, tx pgx.Tx, runID int64) (*Run, []*Job, erro
 	if err != nil {
 		return nil, nil, err
 	}
-	byName := map[string]*Job{}
+	byBase := map[string][]*Job{} // a matrix job has several
 	for _, j := range jobs {
-		byName[j.Name] = j
+		byBase[j.Base()] = append(byBase[j.Base()], j)
 	}
 	var changed []*Job
 	for progress := true; progress; {
@@ -450,12 +465,17 @@ func advanceRun(ctx context.Context, tx pgx.Tx, runID int64) (*Run, []*Job, erro
 			}
 			next := JobQueued
 			for _, n := range j.Needs {
-				dep := byName[n]
-				switch {
-				case dep == nil || dep.Status == JobFailure || dep.Status == JobCancelled || dep.Status == JobSkipped:
+				deps := byBase[n]
+				if len(deps) == 0 {
 					next = JobSkipped
-				case dep.Status != JobSuccess && next != JobSkipped:
-					next = JobWaiting
+				}
+				for _, dep := range deps {
+					switch {
+					case dep.Status == JobFailure || dep.Status == JobCancelled || dep.Status == JobSkipped:
+						next = JobSkipped
+					case dep.Status != JobSuccess && next != JobSkipped:
+						next = JobWaiting
+					}
 				}
 			}
 			if next == JobWaiting {

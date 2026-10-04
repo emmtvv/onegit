@@ -105,6 +105,7 @@ document.addEventListener('click',e=>{document.querySelectorAll('details.dropdow
     <a class="btn {{if eq . "packages"}}active{{end}}" href="/admin/packages">{{template "icon-package"}}Packages</a>
     <a class="btn {{if eq . "runners"}}active{{end}}" href="/admin/runners">{{template "icon-play"}}Runners</a>
     <a class="btn {{if eq . "teams"}}active{{end}}" href="/admin/teams">Teams</a>
+    <a class="btn {{if eq . "projects"}}active{{end}}" href="/admin/projects">{{template "icon-project"}}Projects</a>
     <a class="btn {{if eq . "deploy"}}active{{end}}" href="/admin/deploy">{{template "icon-rocket"}}Deploy rules</a>
     <a class="btn {{if eq . "secrets"}}active{{end}}" href="/admin/secrets">{{template "icon-key"}}Secrets</a>
     <a class="btn {{if eq . "audit"}}active{{end}}" href="/admin/audit">{{template "icon-history"}}Audit log</a>
@@ -134,3 +135,18 @@ document.addEventListener('click',e=>{document.querySelectorAll('details.dropdow
   {{end}}
 </div>
 {{end}}
+
+{{/* owners-line: []string of code owners */}}
+{{define "owners-line"}}{{if .}}<div class="owners-line muted small">{{template "icon-shield"}} Owned by {{range $i, $o := .}}{{if $i}}, {{end}}<strong class="mono">{{$o}}</strong>{{end}}</div>{{end}}{{end}}
+
+{{/* project-filter: dict "Projects" []projects.Project "Current" string "Base" url with ? or & ready for project= */}}
+{{define "project-filter"}}{{if .Projects}}
+<details class="dropdown">
+  <summary class="btn">{{template "icon-project"}}{{if .Current}}{{.Current}}{{else}}All projects{{end}}<span class="caret"></span></summary>
+  <div class="menu refmenu">
+    <input class="menu-filter" type="search" placeholder="Filter projects…" oninput="filterMenu(this)">
+    <a data-name="" href="{{.Base}}" class="{{if not .Current}}selected{{end}}">All projects</a>
+    {{$cur := .Current}}{{$base := .Base}}{{range .Projects}}<a data-name="{{.Name}}" class="{{if eq .Name $cur}}selected{{end}}" href="{{$base}}project={{queryesc .Name}}">{{.Name}}</a>{{end}}
+  </div>
+</details>
+{{end}}{{end}}

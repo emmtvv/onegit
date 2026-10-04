@@ -78,6 +78,20 @@ type Config struct {
 		MaxTotalBytes int64 `yaml:"-"`
 	} `yaml:"registry"`
 
+	CI struct {
+		// MaxArtifactSize caps one job's artifact archive ("1GiB").
+		MaxArtifactSize string `yaml:"max_artifact_size" env:"ONEGIT_CI_MAX_ARTIFACT_SIZE"`
+		// ArtifactRetentionDays applies when a job sets no expire-in.
+		ArtifactRetentionDays int `yaml:"artifact_retention_days" env:"ONEGIT_CI_ARTIFACT_RETENTION_DAYS"`
+		// MaxCacheSize caps the total size of CI caches; the least recently
+		// used are evicted. Caches unused for CacheRetentionDays go too.
+		MaxCacheSize       string `yaml:"max_cache_size" env:"ONEGIT_CI_MAX_CACHE_SIZE"`
+		CacheRetentionDays int    `yaml:"cache_retention_days" env:"ONEGIT_CI_CACHE_RETENTION_DAYS"`
+		// Parsed from the strings above; 0 = unlimited.
+		MaxArtifactBytes int64 `yaml:"-"`
+		MaxCacheBytes    int64 `yaml:"-"`
+	} `yaml:"ci"`
+
 	Secrets struct {
 		// Key encrypts deploy secrets in the database (any string; hashed to a
 		// 256-bit key). Without it a key is generated and stored in the
@@ -130,6 +144,10 @@ func Default() *Config {
 	c.S3.Region = "us-east-1"
 	c.S3.CreateBucket = true
 	c.Registry.Enabled = true
+	c.CI.MaxArtifactSize = "1GiB"
+	c.CI.ArtifactRetentionDays = 30
+	c.CI.MaxCacheSize = "20GiB"
+	c.CI.CacheRetentionDays = 7
 	c.Admin.Username = "admin"
 	c.Auth.PasswordLogin = true
 	c.OIDC.DisplayName = "SSO"
@@ -172,6 +190,12 @@ func Load(path string) (*Config, error) {
 	if c.Registry.MaxTotalBytes, err = parseSize(c.Registry.MaxTotalSize); err != nil {
 		return nil, fmt.Errorf("ONEGIT_REGISTRY_MAX_TOTAL_SIZE: %w", err)
 	}
+	if c.CI.MaxArtifactBytes, err = parseSize(c.CI.MaxArtifactSize); err != nil {
+		return nil, fmt.Errorf("ONEGIT_CI_MAX_ARTIFACT_SIZE: %w", err)
+	}
+	if c.CI.MaxCacheBytes, err = parseSize(c.CI.MaxCacheSize); err != nil {
+		return nil, fmt.Errorf("ONEGIT_CI_MAX_CACHE_SIZE: %w", err)
+	}
 	return c, c.validate()
 }
 
@@ -194,6 +218,9 @@ func (c *Config) validate() error {
 	}
 	if c.Repo.Name == "" || strings.ContainsAny(c.Repo.Name, "/\\ ") {
 		return fmt.Errorf("repo name must be a simple name, got %q", c.Repo.Name)
+	}
+	if c.CI.ArtifactRetentionDays <= 0 || c.CI.CacheRetentionDays <= 0 {
+		return fmt.Errorf("ci artifact and cache retention must be at least one day")
 	}
 	if c.OIDC.Enabled && (c.OIDC.Issuer == "" || c.OIDC.ClientID == "") {
 		return fmt.Errorf("oidc issuer and client_id are required when oidc is enabled")

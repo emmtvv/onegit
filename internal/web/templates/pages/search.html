@@ -1,0 +1,41 @@
+{{define "content"}}{{$d := .Data}}
+<form class="search-form box pad" method="get" action="/search">
+  <div class="search-row">
+    <input type="search" name="q" value="{{$d.Q}}" placeholder="Search code, e.g. NewServer path:services/api -path:**/*_test.go" autofocus aria-label="Search">
+    <input type="text" name="ref" value="{{$d.Ref}}" class="mono search-ref" aria-label="Branch, tag or commit" title="Branch, tag or commit">
+    <button class="btn btn-primary" type="submit">{{template "icon-search"}}Search</button>
+  </div>
+  <div class="search-opts">
+    <div class="btn-group">
+      <label class="btn btn-sm {{if eq $d.Type "code"}}active{{end}}"><input type="radio" name="type" value="code" hidden {{if eq $d.Type "code"}}checked{{end}} onchange="this.form.submit()">Code</label>
+      <label class="btn btn-sm {{if eq $d.Type "files"}}active{{end}}"><input type="radio" name="type" value="files" hidden {{if eq $d.Type "files"}}checked{{end}} onchange="this.form.submit()">Files</label>
+    </div>
+    {{if eq $d.Type "code"}}
+    <label class="check"><input type="checkbox" name="regex" value="1" {{if $d.Regex}}checked{{end}}> Regular expression</label>
+    <label class="check"><input type="checkbox" name="case" value="1" {{if $d.Case}}checked{{end}}> Match case</label>
+    {{end}}
+    <span class="muted small">Filters: <code>path:dir</code>, <code>path:**/*.go</code>, <code>-path:vendor</code></span>
+  </div>
+</form>
+{{if $d.Q}}
+  {{if $d.TimedOut}}<div class="flash flash-error">The search took too long and was stopped; results are incomplete. Narrow it with <code>path:</code>.</div>{{end}}
+  {{if eq $d.Type "files"}}
+  <div class="box">
+    <div class="box-header"><strong>{{len $d.Files}}{{if $d.Truncated}}+{{end}} file{{if ne (len $d.Files) 1}}s{{end}}</strong> <span class="muted small">at <span class="mono">{{$d.Ref}}</span></span></div>
+    {{range $d.Files}}<div class="search-file-row">{{fileicon .}}<a class="mono" href="/blob/{{pathesc $d.Ref .}}">{{.}}</a></div>
+    {{else}}<div class="blob-note">No files match.</div>{{end}}
+  </div>
+  {{else}}
+  <div class="muted search-summary">{{if $d.Results}}{{$d.Count}}{{if $d.Truncated}}+{{end}} matching line{{if ne $d.Count 1}}s{{end}} in {{len $d.Results}} file{{if ne (len $d.Results) 1}}s{{end}} at <span class="mono">{{$d.Ref}}</span>{{if $d.Truncated}} · showing the first results only{{end}}{{end}}</div>
+  {{range $d.Results}}{{$f := .}}
+  <div class="box search-result">
+    <div class="box-header">{{fileicon .Path}}<a class="mono" href="/blob/{{pathesc $d.Ref .Path}}">{{.Path}}</a></div>
+    <table class="search-lines"><tbody>
+      {{range .Lines}}<tr><td class="ln"><a href="/blob/{{pathesc $d.Ref $f.Path}}#L{{.No}}">{{.No}}</a></td><td class="code">{{.HTML}}</td></tr>{{end}}
+    </tbody></table>
+    {{if .More}}<div class="search-more"><a href="{{.MoreURL}}">{{.More}} more match{{if ne .More 1}}es{{end}} in this file</a></div>{{end}}
+  </div>
+  {{else}}{{if not .Error}}<div class="box blob-note">No results for <strong>{{$d.Q}}</strong>.</div>{{end}}{{end}}
+  {{end}}
+{{end}}
+{{end}}

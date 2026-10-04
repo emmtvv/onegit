@@ -28,5 +28,15 @@
     </tbody>
   </table>
 </div>
+{{if $d.Artifacts}}
+<div class="box">
+  <div class="box-header"><strong>Artifacts</strong></div>
+  <table class="table"><tbody>{{range $d.Artifacts}}
+    <tr><td><a href="/actions/jobs/{{.JobID}}">{{.JobName}}</a></td><td class="muted">{{bytes .Size}}</td>
+      <td class="muted small">{{if .Expired}}expired{{else}}expires <span title="{{datetime .ExpiresAt}}">{{date .ExpiresAt}}</span>{{end}}</td>
+      <td class="right">{{if not .Expired}}<a class="btn btn-sm" href="/actions/artifacts/{{.ID}}">Download</a>{{end}}</td></tr>
+  {{end}}</tbody></table>
+</div>
+{{end}}
 {{if $r.ChangedFiles}}<details class="box pad"><summary>{{len $r.ChangedFiles}} changed file{{if ne (len $r.ChangedFiles) 1}}s{{end}}</summary><ul class="mono small">{{range $r.ChangedFiles}}<li>{{.}}</li>{{end}}</ul></details>{{end}}
 {{end}}

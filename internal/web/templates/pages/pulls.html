@@ -1,10 +1,12 @@
 {{define "content"}}{{$d := .Data}}
 <div class="toolbar">
   <div class="btn-group">
-    <a class="btn {{if eq $d.State "open"}}active{{end}}" href="/pulls">{{template "icon-pr"}}{{$d.Open}} Open</a>
-    <a class="btn {{if eq $d.State "closed"}}active{{end}}" href="/pulls?state=closed">{{template "icon-check"}}{{$d.Closed}} Closed</a>
+    <a class="btn {{if eq $d.State "open"}}active{{end}}" href="/pulls{{with $d.Project}}?project={{queryesc .}}{{end}}">{{template "icon-pr"}}{{$d.Open}} Open</a>
+    <a class="btn {{if eq $d.State "closed"}}active{{end}}" href="/pulls?state=closed{{with $d.Project}}&project={{queryesc .}}{{end}}">{{template "icon-check"}}{{$d.Closed}} Closed</a>
   </div>
+  {{template "project-filter" (dict "Projects" $d.Projects "Current" $d.Project "Base" (print "/pulls?state=" $d.State "&"))}}
   <span class="spacer"></span>
+  <a class="btn" href="/pulls/queue">{{template "icon-queue"}}Merge queue</a>
   {{if and .User .User.CanWrite}}<a class="btn btn-primary" href="/pulls/new">New pull request</a>{{end}}
 </div>
 <div class="box">
@@ -13,6 +15,7 @@
     {{template "pull-icon" .}}
     <div class="grow">
       <a class="pull-title muted-link" href="/pulls/{{.ID}}">{{.Title}}</a>
+      {{if index $d.Queued .ID}}<span class="badge" title="In the merge queue">{{template "icon-queue"}} queued</span>{{else if .AutoMerge}}<span class="badge" title="Merges when ready">auto-merge</span>{{end}}
       <div class="muted small">
         #{{.ID}}
         {{if .IsMerged}}by {{.AuthorName}} was merged <span title="{{datetime .MergedAt}}">{{ago .MergedAt}}</span>
@@ -27,7 +30,7 @@
   {{end}}
 </div>
 <div class="pager">
-  {{if gt $d.Page 1}}<a class="btn" href="?state={{$d.State}}&page={{sub $d.Page 1}}">Newer</a>{{end}}
-  {{if $d.HasNext}}<a class="btn" href="?state={{$d.State}}&page={{add $d.Page 1}}">Older</a>{{end}}
+  {{if gt $d.Page 1}}<a class="btn" href="?state={{$d.State}}&project={{$d.Project}}&page={{sub $d.Page 1}}">Newer</a>{{end}}
+  {{if $d.HasNext}}<a class="btn" href="?state={{$d.State}}&project={{$d.Project}}&page={{add $d.Page 1}}">Older</a>{{end}}
 </div>
 {{end}}

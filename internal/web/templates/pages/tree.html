@@ -3,9 +3,12 @@
   {{template "refpicker" (dict "Ref" $d.Ref "Path" $d.Path "Kind" "tree" "Branches" $d.Branches "Tags" $d.Tags)}}
   {{template "breadcrumbs" (dict "Ref" $ref "Path" $d.Path "Repo" .Cfg.Repo.Name)}}
   <span class="spacer"></span>
+  {{with $d.Project}}<a class="btn btn-sm" href="/projects/{{pathesc .Name}}" title="Project page">{{template "icon-project"}}{{.Name}}</a>{{end}}
+  <a class="btn btn-sm" href="/search?q={{if $d.Path}}path:{{queryesc $d.Path}}+{{end}}&ref={{queryesc $ref}}" title="Search in this directory">{{template "icon-search"}}</a>
   <a class="btn btn-sm" href="/commits/{{pathesc $ref $d.Path}}">{{template "icon-history"}}History</a>
   {{template "clone" .Cfg}}
 </div>
+{{template "owners-line" $d.Owners}}
 <div class="box">
   {{with $d.Head}}<div class="box-header">{{template "commitline" .}}</div>{{end}}
   <table class="files">

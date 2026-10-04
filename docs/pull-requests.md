@@ -21,10 +21,49 @@ deleted.
   commits are replayed one by one keeping their authors). Merges happen on
   the server without a worktree and refuse to run if the base moved in the
   meantime. The head branch can be deleted in the same step.
+- A merge starts the push pipelines of the base branch, as a push would.
 - A plain push that makes the base contain the head marks the pull request
   merged ("manual").
 - Conflicts are detected with `git merge-tree`; resolve them by merging or
   rebasing the base into the branch and pushing.
+
+## Auto-merge
+
+When a pull request cannot be merged yet, **Enable auto-merge** (with the
+chosen style and message) merges it as you once every requirement is met:
+approvals, code owners, required checks, no conflicts. It also deletes the
+branch if asked. On a branch that requires the merge queue the button reads
+**Queue when ready** and puts the pull request into the queue instead. Pushing
+new commits keeps auto-merge on; closing the pull request, or the user losing
+write access, turns it off.
+
+## Merge queue
+
+In a busy monorepo two pull requests can each pass their checks and still
+break the branch together. With **Require a merge queue** in the branch's
+protection rule, pull requests land only through the queue:
+
+1. **Add to merge queue** (the pull request must be mergeable as usual).
+2. The queue builds a candidate commit for each of the first *depth* entries
+   with the merge style chosen when queueing: entry 1 on top of the branch,
+   entry 2 on top of entry 1's candidate, and so on. Candidates live in
+   `refs/merge-queue/<n>`.
+3. The candidates run the pipelines with a `merge_queue` or `pull_request`
+   trigger (`ONEGIT_EVENT=merge_queue`). A candidate passes when the rule's
+   required checks succeed on it, or, without required checks, when every
+   check on it does.
+4. When a candidate passes, the branch fast-forwards to it: that pull request
+   and all ahead of it land at once (a later candidate contains the earlier
+   ones). Each is marked merged with its own commit, and the push pipelines
+   of the branch start.
+5. A candidate that fails, or conflicts, takes its pull request out of the
+   queue with the reason in the timeline; the entries behind it are rebuilt
+   without it. A push to a queued pull request, or closing it, also takes it
+   out.
+
+Approvals are checked again before landing. Direct merges are refused on
+such branches. **Pull requests → Merge queue** shows the queues with their
+candidates' checks and the recent results.
 
 ## Branch protection
 
@@ -41,6 +80,8 @@ pattern. Options:
 | Block on requested changes | An open change request blocks the merge |
 | Required status checks | Commit statuses (`<pipeline> / <job>`) that must succeed on the head commit |
 | Code owners (server-side) | CODEOWNERS rules kept in the database and always enforced, whatever the repository says |
+| Require a merge queue | Pull requests land only through the merge queue |
+| Merge queue depth | How many queued pull requests are tested at once (default 5) |
 | Allow force-push / deletion | Off by default |
 
 Creating a protected branch is allowed; administrators get no bypass. The

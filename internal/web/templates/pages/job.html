@@ -14,6 +14,7 @@
         <div class="muted small" id="job-message">{{$j.Message}}</div>
       </div>
       <span class="spacer"></span>
+      {{with $d.Artifact}}{{if not .Expired}}<a class="btn btn-sm" href="/actions/artifacts/{{.ID}}" title="Expires {{date .ExpiresAt}}">Artifacts · {{bytes .Size}}</a>{{end}}{{end}}
       <a class="btn btn-sm" href="/actions/jobs/{{$j.ID}}/raw">Raw log</a>
       {{if and $d.CanWrite (not $r.FinishedAt) (not $r.DeploymentID)}}<form method="post" action="/actions/runs/{{$r.ID}}/cancel"><button class="btn btn-sm btn-danger" type="submit">Cancel run</button></form>{{end}}
     </div>

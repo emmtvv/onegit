@@ -22,6 +22,7 @@ import (
 	"onegit/internal/git"
 	"onegit/internal/hooks"
 	"onegit/internal/kv"
+	"onegit/internal/projects"
 	"onegit/internal/pulls"
 	"onegit/internal/registry"
 	"onegit/internal/store"
@@ -85,7 +86,14 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*Server, er
 	if err := s.bootstrapAdmin(ctx); err != nil {
 		return nil, err
 	}
-	s.CI = &ci.Service{Store: st, Repo: repo, Cfg: cfg, Log: log}
+	s.CI = &ci.Service{Store: st, Repo: repo, Cfg: cfg, Log: log, Blob: bs}
+	s.CI.OnCheckDone = func(string) { s.Pulls.Kick() }
+	s.Pulls.StartChecks = s.CI.RunMergeQueue
+	s.Pulls.CancelChecks = s.CI.CancelMergeQueue
+	s.Pulls.BaseUpdated = func(ctx context.Context, by *store.User, updates []hooks.RefUpdate) {
+		// Like a push: pipelines start in the background.
+		go s.CI.OnPush(context.WithoutCancel(ctx), by, updates)
+	}
 	if s.Deploy, err = deploy.New(ctx, st, repo, s.CI, cfg, log); err != nil {
 		return nil, err
 	}
@@ -169,7 +177,8 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		return err
 	}
 	s.web, err = web.New(web.Deps{Cfg: s.Cfg, Store: s.Store, KV: s.KV, Repo: s.Repo, Auth: s.Auth, OIDC: s.OIDC, Pulls: s.Pulls,
-		Registry: s.Registry, CI: s.CI, Deploy: s.Deploy, Log: s.Log})
+		Registry: s.Registry, CI: s.CI, Deploy: s.Deploy, Log: s.Log,
+		Projects: &projects.Service{Store: s.Store, Repo: s.Repo, Cfg: s.Cfg}})
 	if err != nil {
 		return err
 	}
@@ -178,6 +187,8 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		go s.Registry.GCLoop(ctx)
 	}
 	go s.CI.Janitor(ctx)
+	go s.CI.Maintenance(ctx)
+	go s.Pulls.Background(ctx)
 
 	httpSrv := &http.Server{Handler: s.routes(), ReadHeaderTimeout: 30 * time.Second}
 	errc := make(chan error, 1)

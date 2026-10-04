@@ -19,6 +19,7 @@ import (
 	"onegit/internal/deploy"
 	"onegit/internal/git"
 	"onegit/internal/kv"
+	"onegit/internal/projects"
 	"onegit/internal/pulls"
 	"onegit/internal/registry"
 	"onegit/internal/store"
@@ -39,6 +40,7 @@ type Deps struct {
 	Registry *registry.Service
 	CI       *ci.Service
 	Deploy   *deploy.Service
+	Projects *projects.Service
 	Log      *slog.Logger
 }
 
@@ -81,15 +83,18 @@ func (w *Web) routes() http.Handler {
 	mux.Handle("GET /tree/{rest...}", read(w.tree))
 	mux.Handle("GET /blob/{rest...}", read(w.blob))
 	mux.Handle("GET /raw/{rest...}", read(w.raw))
+	mux.Handle("GET /blame/{rest...}", read(w.blame))
 	mux.Handle("GET /commits/{rest...}", read(w.commits))
 	mux.Handle("GET /commit/{sha}", read(w.commit))
 	mux.Handle("GET /branches", read(w.branches))
 	mux.Handle("GET /tags", read(w.tags))
+	mux.Handle("GET /search", read(w.search))
 
 	// Pull requests
 	login := w.requireLogin
 	mux.Handle("GET /pulls", read(w.pullList))
 	mux.Handle("GET /pulls/new", login(w.pullNew))
+	mux.Handle("GET /pulls/queue", read(w.mergeQueue))
 	mux.Handle("POST /pulls", login(w.pullCreate))
 	mux.Handle("GET /pulls/{id}", read(w.pullView))
 	mux.Handle("GET /pulls/{id}/commits", read(w.pullView))
@@ -98,8 +103,14 @@ func (w *Web) routes() http.Handler {
 	mux.Handle("POST /pulls/{id}/comments/{cid}/delete", login(w.pullDeleteComment))
 	mux.Handle("POST /pulls/{id}/reviews", login(w.pullReview))
 	mux.Handle("POST /pulls/{id}/merge", login(w.pullMerge))
+	mux.Handle("POST /pulls/{id}/auto-merge", login(w.pullAutoMerge))
+	mux.Handle("POST /pulls/{id}/queue", login(w.pullQueue))
 	mux.Handle("POST /pulls/{id}/edit", login(w.pullEdit))
 	mux.Handle("POST /pulls/{id}/delete-branch", login(w.pullDeleteBranch))
+
+	// Projects
+	mux.Handle("GET /projects", read(w.projectList))
+	mux.Handle("GET /projects/{name}", read(w.projectView))
 
 	// Container registry
 	mux.Handle("GET /packages", read(w.packageList))
@@ -116,6 +127,7 @@ func (w *Web) routes() http.Handler {
 	mux.Handle("GET /actions/jobs/{id}", read(w.jobPage))
 	mux.Handle("GET /actions/jobs/{id}/log", read(w.jobLog))
 	mux.Handle("GET /actions/jobs/{id}/raw", read(w.jobRawLog))
+	mux.Handle("GET /actions/artifacts/{id}", read(w.artifactDownload))
 
 	// Deployments
 	mux.Handle("GET /deploy", read(w.deployOverview))
@@ -168,6 +180,8 @@ func (w *Web) routes() http.Handler {
 	mux.Handle("GET /admin/packages", admin(w.adminPackages))
 	mux.Handle("POST /admin/packages", admin(w.adminSavePackages))
 	mux.Handle("POST /admin/packages/run", admin(w.adminRunCleanup))
+	mux.Handle("GET /admin/projects", admin(w.adminProjects))
+	mux.Handle("POST /admin/projects", admin(w.adminSaveProjects))
 
 	mux.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) { w.notFound(rw, r) })
 
@@ -284,6 +298,8 @@ type Page struct {
 	Branch string // default branch, for nav links
 	// OpenPulls is the count shown on the nav tab.
 	OpenPulls int
+	// Projects: the Projects tab is shown.
+	Projects bool
 }
 
 func (w *Web) render(rw http.ResponseWriter, r *http.Request, status int, name string, p *Page) {
@@ -297,6 +313,7 @@ func (w *Web) render(rw http.ResponseWriter, r *http.Request, status int, name s
 	}
 	if p.Tab != "" {
 		p.OpenPulls, _, _ = w.Store.CountPulls(r.Context())
+		_, _, p.Projects, _ = w.Projects.Settings(r.Context())
 	}
 	ts, ok := w.tmpl[name]
 	if !ok {

@@ -49,14 +49,20 @@ that, but it does need what forges are weak at:
 ## Features
 
 - **Code**: tree and file views with syntax highlighting, Markdown
-  READMEs, history, diffs, branches with ahead/behind counts, tags. git over
-  HTTP(S) only; one port for everything.
+  READMEs, blame, history, diffs, branches with ahead/behind counts, tags,
+  code search with path filters. git over HTTP(S) only; one port for
+  everything.
+- **Projects**: directories of the monorepo as first-class projects, with
+  their owners, pull requests, CI runs and what is deployed where; pull
+  requests and runs filter by project.
 - **Pull requests**: line comments, reviews, squash / merge / rebase done on
   the server, conflict detection, CODEOWNERS (users, emails and teams),
   branch protection with required approvals, code owner review and required
-  checks.
-- **CI**: pipelines in `.onegit/pipelines/*.yml` with push, pull request and
-  manual triggers, path filters and job dependencies; commit statuses; live
+  checks, auto-merge and a merge queue that tests queued pull requests on top
+  of each other.
+- **CI**: pipelines in `.onegit/pipelines/*.yml` with push, pull request,
+  merge queue, cron and manual triggers, path filters, job dependencies,
+  matrices, artifacts passed between jobs and caches; commit statuses; live
   logs; runners are the same binary and poll over HTTP.
 - **Deployments**: targets from dimensions you define (`project ×
   environment`), grants and requirements (branches, checks, CI-built
@@ -126,9 +132,10 @@ approval. See [docs/ci.md](docs/ci.md) and
 ## Documentation
 
 - [Quickstart](docs/quickstart.md): run, first login, push, invite the team
+- [Code, search and projects](docs/code.md): blame, code search, projects
 - [Configuration](docs/configuration.md): every setting, SSO
-- [Pull requests](docs/pull-requests.md): reviews, merges, branch protection, CODEOWNERS
-- [CI](docs/ci.md): pipelines, job environment, runners
+- [Pull requests](docs/pull-requests.md): reviews, merges, auto-merge, merge queue, branch protection, CODEOWNERS
+- [CI](docs/ci.md): pipelines, schedules, matrices, artifacts, caches, runners
 - [Deployments](docs/deployments.md): targets, rules, recipes, secrets
 - [Container registry](docs/registry.md): docker login, cleanup, API
 - [Operations](docs/operations.md): architecture, replicas, HTTPS, backups, upgrades

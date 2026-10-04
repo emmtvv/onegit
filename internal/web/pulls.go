@@ -61,7 +61,8 @@ func (w *Web) pullList(rw http.ResponseWriter, r *http.Request) {
 	}
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	page = max(page, 1)
-	list, err := w.Store.ListPulls(ctx, state, pullsPerPage+1, (page-1)*pullsPerPage)
+	project, dir := w.projectDir(r)
+	list, err := w.Store.ListPullsIn(ctx, state, dir, pullsPerPage+1, (page-1)*pullsPerPage)
 	if err != nil {
 		w.fail(rw, r, err)
 		return
@@ -70,13 +71,24 @@ func (w *Web) pullList(rw http.ResponseWriter, r *http.Request) {
 	if hasNext {
 		list = list[:pullsPerPage]
 	}
-	open, closed, err := w.Store.CountPulls(ctx)
+	open, closed, err := w.Store.CountPullsIn(ctx, dir)
 	if err != nil {
 		w.fail(rw, r, err)
 		return
 	}
+	queued := map[int64]bool{}
+	if branches, err := w.Store.QueueBranches(ctx); err == nil {
+		for _, b := range branches {
+			entries, _ := w.Store.ActiveQueue(ctx, b)
+			for _, e := range entries {
+				queued[e.PullID] = true
+			}
+		}
+	}
+	projectList, _, _ := w.Projects.List(ctx)
 	w.render(rw, r, http.StatusOK, "pulls", &Page{Title: "Pull requests · " + w.Cfg.Repo.Name, Tab: "pulls", Data: map[string]any{
 		"Pulls": list, "State": state, "Open": open, "Closed": closed, "Page": page, "HasNext": hasNext,
+		"Project": project, "Projects": projectList, "Queued": queued,
 	}})
 }
 
@@ -265,6 +277,19 @@ func (w *Web) pullView(rw http.ResponseWriter, r *http.Request) {
 				styles = append(styles, styleOpt{s, t, b})
 			}
 			data["Styles"] = styles
+			if e, err := w.Store.ActiveQueueEntry(ctx, p.ID); err == nil {
+				data["Queue"] = e
+				if list, err := w.Store.ActiveQueue(ctx, p.BaseBranch); err == nil {
+					for i, x := range list {
+						if x.ID == e.ID {
+							data["QueuePos"], data["QueueLen"] = i+1, len(list)
+						}
+					}
+				}
+				if e.TestSHA != "" {
+					data["QueueChecks"], _ = w.Store.CommitStatuses(ctx, e.TestSHA)
+				}
+			}
 		}
 	case "commits":
 		commits, err := w.Repo.Log(ctx, p.MergeBase+".."+p.HeadSHA, git.LogOptions{Limit: 250})
@@ -522,6 +547,7 @@ func (w *Web) pullReview(rw http.ResponseWriter, r *http.Request) {
 		w.fail(rw, r, err)
 		return
 	}
+	w.Pulls.Kick() // an approval may complete auto-merge or a queued PR
 	http.Redirect(rw, r, back+"#review-"+strconv.FormatInt(rev.ID, 10), http.StatusSeeOther)
 }
 
@@ -553,6 +579,94 @@ func (w *Web) pullMerge(rw http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.redirectFlash(rw, r, back, msg)
+}
+
+func mergeOptions(r *http.Request) pulls.MergeOptions {
+	return pulls.MergeOptions{Style: pulls.MergeStyle(r.FormValue("style")), Title: r.FormValue("title"), Message: r.FormValue("message")}
+}
+
+func (w *Web) pullAutoMerge(rw http.ResponseWriter, r *http.Request) {
+	p := w.loadPull(rw, r)
+	if p == nil {
+		return
+	}
+	u := currentUser(r)
+	var err error
+	msg := "Auto-merge enabled: the pull request merges once every requirement is met."
+	if r.FormValue("action") == "disable" {
+		if !u.CanWrite() && !p.IsAuthor(u) {
+			w.errorPage(rw, r, http.StatusForbidden, "You cannot change auto-merge here.")
+			return
+		}
+		err, msg = w.Pulls.DisableAutoMerge(r.Context(), p.ID, u), "Auto-merge disabled."
+	} else {
+		err = w.Pulls.EnableAutoMerge(r.Context(), p.ID, u, mergeOptions(r), r.FormValue("delete_branch") == "on")
+	}
+	if err != nil {
+		w.pullFail(rw, r, pullPath(p.ID), err)
+		return
+	}
+	w.redirectFlash(rw, r, pullPath(p.ID), msg)
+}
+
+func (w *Web) pullQueue(rw http.ResponseWriter, r *http.Request) {
+	p := w.loadPull(rw, r)
+	if p == nil {
+		return
+	}
+	u := currentUser(r)
+	if r.FormValue("action") == "remove" {
+		if err := w.Pulls.Dequeue(r.Context(), p.ID, u); err != nil {
+			w.pullFail(rw, r, pullPath(p.ID), err)
+			return
+		}
+		w.redirectFlash(rw, r, pullPath(p.ID), "Removed from the merge queue.")
+		return
+	}
+	if err := w.Pulls.Enqueue(r.Context(), p.ID, u, mergeOptions(r), r.FormValue("delete_branch") == "on"); err != nil {
+		w.pullFail(rw, r, pullPath(p.ID), err)
+		return
+	}
+	w.redirectFlash(rw, r, pullPath(p.ID), "Added to the merge queue.")
+}
+
+// mergeQueue shows every branch's queue and recent results.
+func (w *Web) mergeQueue(rw http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	branches, err := w.Store.QueueBranches(ctx)
+	if err != nil {
+		w.fail(rw, r, err)
+		return
+	}
+	type queueView struct {
+		Branch  string
+		Entries []*store.QueueEntry
+		Checks  map[int64][]*store.CommitStatus
+	}
+	var queues []queueView
+	for _, b := range branches {
+		list, err := w.Store.ActiveQueue(ctx, b)
+		if err != nil {
+			w.fail(rw, r, err)
+			return
+		}
+		q := queueView{Branch: b, Entries: list, Checks: map[int64][]*store.CommitStatus{}}
+		for _, e := range list {
+			if e.TestSHA != "" {
+				q.Checks[e.ID], _ = w.Store.CommitStatuses(ctx, e.TestSHA)
+			}
+		}
+		queues = append(queues, q)
+	}
+	recent, err := w.Store.RecentQueueEntries(ctx, 30)
+	if err != nil {
+		w.fail(rw, r, err)
+		return
+	}
+	open, closed, _ := w.Store.CountPulls(ctx)
+	w.render(rw, r, http.StatusOK, "merge_queue", &Page{Title: "Merge queue · " + w.Cfg.Repo.Name, Tab: "pulls", Data: map[string]any{
+		"Queues": queues, "Recent": recent, "Open": open, "Closed": closed,
+	}})
 }
 
 func (w *Web) pullDeleteBranch(rw http.ResponseWriter, r *http.Request) {
@@ -624,6 +738,7 @@ func (w *Web) adminSaveBranch(rw http.ResponseWriter, r *http.Request) {
 		BlockOnChangesRequested: r.FormValue("block_on_changes_requested") == "on",
 		AllowForcePush:          r.FormValue("allow_force_push") == "on",
 		AllowDeletion:           r.FormValue("allow_deletion") == "on",
+		RequireMergeQueue:       r.FormValue("require_merge_queue") == "on",
 		Owners:                  strings.TrimSpace(strings.ReplaceAll(r.FormValue("owners"), "\r\n", "\n")),
 	}
 	for _, c := range strings.Split(r.FormValue("required_checks"), "\n") {
@@ -638,6 +753,14 @@ func (w *Web) adminSaveBranch(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b.RequiredApprovals = n
+	if v := r.FormValue("merge_queue_depth"); v != "" {
+		d, err := strconv.Atoi(v)
+		if err != nil || d < 1 || d > 50 {
+			w.redirectFlash(rw, r, "/admin/branches", "Merge queue depth must be a number between 1 and 50.")
+			return
+		}
+		b.MergeQueueDepth = d
+	}
 	if b.Pattern == "" || strings.ContainsAny(b.Pattern, " \t") {
 		w.redirectFlash(rw, r, "/admin/branches", "Enter a branch name or pattern.")
 		return
@@ -654,6 +777,7 @@ func (w *Web) adminSaveBranch(rw http.ResponseWriter, r *http.Request) {
 		w.fail(rw, r, err)
 		return
 	}
+	w.Pulls.Kick()
 	w.redirectFlash(rw, r, "/admin/branches", "Rule for "+b.Pattern+" saved.")
 }
 

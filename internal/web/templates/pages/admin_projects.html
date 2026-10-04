@@ -1,0 +1,26 @@
+{{define "content"}}{{template "admin-nav" "projects"}}{{$d := .Data}}
+<p class="muted">A project is a directory of the monorepo. Its page brings together its code owners, the pull requests and CI runs that change it and, when deployments are per project, what is deployed where. Pull requests and runs can be filtered by project.</p>
+<div class="box">
+  <div class="box-header"><strong>How projects are found</strong>
+    <span class="spacer"></span>
+    {{if not $d.Explicit}}{{if $d.Enabled}}<span class="muted small">from the deploy dimension <code>{{$d.Settings.Dimension}}</code></span>{{else}}<span class="muted small">not set up</span>{{end}}{{end}}
+  </div>
+  <form method="post" action="/admin/projects" class="pad form">
+    <label>Directory pattern <span class="muted small">(one <code>*</code> for the project name: <code>services/*</code>, or <code>projects/*/project.yaml</code> to require a marker file)</span>
+      <input name="pattern" class="mono" value="{{$d.Settings.Pattern}}" placeholder="services/*"></label>
+    <label>Deploy dimension with project names <span class="muted small">(links projects to their deployments)</span>
+      <select name="dimension"><option value="">none</option>{{range $d.Dims}}<option value="{{.Name}}" {{if eq .Name $d.Settings.Dimension}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Save</button>
+      {{if $d.Explicit}}<button class="btn" type="submit" name="action" value="default" title="Follow the first deploy dimension that comes from directories">Use the deploy dimension</button>{{end}}
+      {{if $d.Enabled}}<button class="btn btn-danger" type="submit" name="action" value="disable">Turn off</button>{{end}}
+    </div>
+  </form>
+</div>
+{{if $d.Enabled}}
+<div class="box">
+  <div class="box-header"><strong>{{len $d.Projects}} project{{if ne (len $d.Projects) 1}}s{{end}} on the default branch</strong></div>
+  <div class="pad">{{range $d.Projects}}<a class="label mono" href="/projects/{{pathesc .Name}}">{{.Name}}</a> {{else}}<span class="muted">No directories match the pattern.</span>{{end}}</div>
+</div>
+{{end}}
+{{end}}

@@ -70,6 +70,9 @@ func (s *Service) Merge(ctx context.Context, id int64, u *store.User, o MergeOpt
 		if err != nil {
 			return err
 		}
+		if st.QueueRequired {
+			return userErr("%s takes changes only through the merge queue.", p.BaseBranch)
+		}
 		if !st.Mergeable() {
 			return userErr("Cannot merge: %s", strings.Join(st.Blockers, " "))
 		}
@@ -98,9 +101,17 @@ func (s *Service) Merge(ctx context.Context, id int64, u *store.User, o MergeOpt
 		s.Log.Error("pull event", "err", err)
 	}
 	s.Log.Info("pull merged", "pull", id, "user", u.Username, "style", o.Style, "base", p.BaseBranch, "sha", newTip)
-	// Server-side ref updates don't run hooks; sync other PRs ourselves.
-	s.SyncPush(ctx, u, []hooks.RefUpdate{{OldSHA: baseSHA, NewSHA: newTip, Ref: "refs/heads/" + p.BaseBranch}})
+	// Server-side ref updates don't run hooks: sync other PRs and start
+	// push pipelines ourselves.
+	s.afterBaseUpdate(ctx, u, []hooks.RefUpdate{{OldSHA: baseSHA, NewSHA: newTip, Ref: "refs/heads/" + p.BaseBranch}})
 	return s.Store.PullByID(ctx, id)
+}
+
+func (s *Service) afterBaseUpdate(ctx context.Context, u *store.User, updates []hooks.RefUpdate) {
+	s.SyncPush(ctx, u, updates)
+	if s.BaseUpdated != nil {
+		s.BaseUpdated(ctx, u, updates)
+	}
 }
 
 func (s *Service) buildMerge(ctx context.Context, p *store.Pull, baseSHA string, u *store.User, o MergeOptions) (string, error) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -35,29 +36,47 @@ type Pull struct {
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 
+	// ChangedFiles as of FilesSHA (the head they were computed for).
+	ChangedFiles []string
+	FilesSHA     string
+	// Auto-merge: set while enabled; the PR merges (or joins the merge
+	// queue) as AutoMergeBy once every requirement is met.
+	AutoMergeBy           *int64
+	AutoMergeStyle        string
+	AutoMergeTitle        string
+	AutoMergeMessage      string
+	AutoMergeDeleteBranch bool
+
 	// Joined from users; "ghost" when the user was deleted.
-	AuthorName   string
-	AuthorEmail  string
-	MergedByName string
+	AuthorName      string
+	AuthorEmail     string
+	MergedByName    string
+	AutoMergeByName string
 }
 
-func (p *Pull) IsOpen() bool   { return p.State == PullOpen }
-func (p *Pull) IsMerged() bool { return p.State == PullMerged }
+func (p *Pull) IsOpen() bool    { return p.State == PullOpen }
+func (p *Pull) AutoMerge() bool { return p.AutoMergeBy != nil }
+func (p *Pull) IsMerged() bool  { return p.State == PullMerged }
 func (p *Pull) IsAuthor(u *User) bool {
 	return u != nil && p.AuthorID != nil && *p.AuthorID == u.ID
 }
 
 const pullCols = `p.id, p.title, p.body, p.author_id, p.head_branch, p.base_branch, p.head_sha, p.merge_base, p.state,
 	p.merge_sha, p.merge_style, p.merged_by, p.merged_at, p.closed_at, p.created_at, p.updated_at,
-	COALESCE(a.username, 'ghost'), COALESCE(a.email, ''), COALESCE(m.username, 'ghost')`
+	p.changed_files, p.files_sha, p.auto_merge_by, p.auto_merge_style, p.auto_merge_title, p.auto_merge_message,
+	p.auto_merge_delete_branch,
+	COALESCE(a.username, 'ghost'), COALESCE(a.email, ''), COALESCE(m.username, 'ghost'), COALESCE(am.username, 'ghost')`
 
-const pullFrom = ` FROM pulls p LEFT JOIN users a ON a.id = p.author_id LEFT JOIN users m ON m.id = p.merged_by `
+const pullFrom = ` FROM pulls p LEFT JOIN users a ON a.id = p.author_id LEFT JOIN users m ON m.id = p.merged_by
+	LEFT JOIN users am ON am.id = p.auto_merge_by `
 
 func scanPull(row pgx.Row) (*Pull, error) {
 	var p Pull
 	err := row.Scan(&p.ID, &p.Title, &p.Body, &p.AuthorID, &p.HeadBranch, &p.BaseBranch, &p.HeadSHA, &p.MergeBase, &p.State,
 		&p.MergeSHA, &p.MergeStyle, &p.MergedBy, &p.MergedAt, &p.ClosedAt, &p.CreatedAt, &p.UpdatedAt,
-		&p.AuthorName, &p.AuthorEmail, &p.MergedByName)
+		&p.ChangedFiles, &p.FilesSHA, &p.AutoMergeBy, &p.AutoMergeStyle, &p.AutoMergeTitle, &p.AutoMergeMessage,
+		&p.AutoMergeDeleteBranch,
+		&p.AuthorName, &p.AuthorEmail, &p.MergedByName, &p.AutoMergeByName)
 	if err != nil {
 		return nil, notFound(err)
 	}
@@ -100,18 +119,60 @@ func (s *Store) PullByID(ctx context.Context, id int64) (*Pull, error) {
 
 // ListPulls lists PRs by state ("open", or "closed" meaning closed+merged).
 func (s *Store) ListPulls(ctx context.Context, state string, limit, offset int) ([]*Pull, error) {
+	return s.ListPullsIn(ctx, state, "", limit, offset)
+}
+
+// touchesDir matches PRs that change a file under dir (a "dir/" prefix);
+// $1 is the prefix, ” matching every PR.
+const touchesDir = `($1 = '' OR EXISTS (SELECT 1 FROM unnest(p.changed_files) f WHERE starts_with(f, $1)))`
+
+// ListPullsIn lists PRs by state that change files under dir ("" = all).
+func (s *Store) ListPullsIn(ctx context.Context, state, dir string, limit, offset int) ([]*Pull, error) {
 	cond := `p.state = 'open'`
 	if state == "closed" {
 		cond = `p.state <> 'open'`
 	}
 	return collectPulls(s.db.Query(ctx,
-		`SELECT `+pullCols+pullFrom+`WHERE `+cond+` ORDER BY p.id DESC LIMIT $1 OFFSET $2`, limit, offset))
+		`SELECT `+pullCols+pullFrom+`WHERE `+cond+` AND `+touchesDir+` ORDER BY p.id DESC LIMIT $2 OFFSET $3`, dirPrefix(dir), limit, offset))
 }
 
 func (s *Store) CountPulls(ctx context.Context) (open, closed int, err error) {
+	return s.CountPullsIn(ctx, "")
+}
+
+func (s *Store) CountPullsIn(ctx context.Context, dir string) (open, closed int, err error) {
 	err = s.db.QueryRow(ctx,
-		`SELECT count(*) FILTER (WHERE state = 'open'), count(*) FILTER (WHERE state <> 'open') FROM pulls`).Scan(&open, &closed)
+		`SELECT count(*) FILTER (WHERE state = 'open'), count(*) FILTER (WHERE state <> 'open') FROM pulls p WHERE `+touchesDir,
+		dirPrefix(dir)).Scan(&open, &closed)
 	return
+}
+
+func dirPrefix(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	return strings.TrimSuffix(dir, "/") + "/"
+}
+
+// SetPullFiles stores the changed files computed for head sha.
+func (s *Store) SetPullFiles(ctx context.Context, id int64, files []string, sha string) error {
+	if files == nil {
+		files = []string{}
+	}
+	_, err := s.db.Exec(ctx, `UPDATE pulls SET changed_files = $2, files_sha = $3 WHERE id = $1`, id, files, sha)
+	return err
+}
+
+// PullsNeedingFiles lists PRs whose changed files are not computed for
+// their current head, open ones first.
+func (s *Store) PullsNeedingFiles(ctx context.Context, limit int) ([]*Pull, error) {
+	return collectPulls(s.db.Query(ctx, `SELECT `+pullCols+pullFrom+`WHERE p.files_sha <> p.head_sha
+		ORDER BY p.state = 'open' DESC, p.id DESC LIMIT $1`, limit))
+}
+
+// AutoMergePulls lists open PRs with auto-merge enabled.
+func (s *Store) AutoMergePulls(ctx context.Context) ([]*Pull, error) {
+	return collectPulls(s.db.Query(ctx, `SELECT `+pullCols+pullFrom+`WHERE p.state = 'open' AND p.auto_merge_by IS NOT NULL ORDER BY p.id`))
 }
 
 // OpenPullsForBranch returns open PRs whose head or base is branch.
@@ -155,11 +216,16 @@ func (s *Store) UpdatePullLocked(ctx context.Context, id int64, fn func(p *Pull)
 		if err := fn(p); err != nil {
 			return err
 		}
+		if !p.IsOpen() {
+			p.AutoMergeBy = nil // auto-merge ends with the PR
+		}
 		err = tx.QueryRow(ctx,
 			`UPDATE pulls SET title=$2, body=$3, head_sha=$4, merge_base=$5, state=$6, merge_sha=$7, merge_style=$8,
-			 merged_by=$9, merged_at=$10, closed_at=$11, updated_at=now() WHERE id=$1 RETURNING updated_at`,
+			 merged_by=$9, merged_at=$10, closed_at=$11, auto_merge_by=$12, auto_merge_style=$13, auto_merge_title=$14,
+			 auto_merge_message=$15, auto_merge_delete_branch=$16, updated_at=now() WHERE id=$1 RETURNING updated_at`,
 			p.ID, p.Title, p.Body, p.HeadSHA, p.MergeBase, p.State, p.MergeSHA, p.MergeStyle,
-			p.MergedBy, p.MergedAt, p.ClosedAt).Scan(&p.UpdatedAt)
+			p.MergedBy, p.MergedAt, p.ClosedAt, p.AutoMergeBy, p.AutoMergeStyle, p.AutoMergeTitle,
+			p.AutoMergeMessage, p.AutoMergeDeleteBranch).Scan(&p.UpdatedAt)
 		if isUniqueViolation(err) {
 			return ErrDuplicate // reopening while another open PR has the same branches
 		}
@@ -342,11 +408,16 @@ type BranchProtection struct {
 	AllowDeletion           bool
 	RequiredChecks          []string // commit status contexts that must pass before merging
 	Owners                  string   // server-side CODEOWNERS rules, always enforced
-	CreatedAt               time.Time
+	// RequireMergeQueue: PRs land only through the merge queue, which tests
+	// up to MergeQueueDepth of them at once, each on top of the previous.
+	RequireMergeQueue bool
+	MergeQueueDepth   int
+	CreatedAt         time.Time
 }
 
 const protCols = `id, pattern, require_pull_request, required_approvals, dismiss_stale_approvals, require_code_owner_review,
-	block_on_changes_requested, allow_force_push, allow_deletion, required_checks, owners, created_at`
+	block_on_changes_requested, allow_force_push, allow_deletion, required_checks, owners, require_merge_queue,
+	merge_queue_depth, created_at`
 
 func (s *Store) ListBranchProtections(ctx context.Context) ([]*BranchProtection, error) {
 	rows, err := s.db.Query(ctx, `SELECT `+protCols+` FROM branch_protections ORDER BY pattern`)
@@ -359,7 +430,7 @@ func (s *Store) ListBranchProtections(ctx context.Context) ([]*BranchProtection,
 		var b BranchProtection
 		if err := rows.Scan(&b.ID, &b.Pattern, &b.RequirePullRequest, &b.RequiredApprovals, &b.DismissStaleApprovals,
 			&b.RequireCodeOwnerReview, &b.BlockOnChangesRequested, &b.AllowForcePush, &b.AllowDeletion, &b.RequiredChecks,
-			&b.Owners, &b.CreatedAt); err != nil {
+			&b.Owners, &b.RequireMergeQueue, &b.MergeQueueDepth, &b.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, &b)
@@ -373,20 +444,26 @@ func (s *Store) SaveBranchProtection(ctx context.Context, b *BranchProtection) e
 	if b.RequiredChecks == nil {
 		b.RequiredChecks = []string{}
 	}
+	if b.MergeQueueDepth <= 0 {
+		b.MergeQueueDepth = 5
+	}
 	if b.ID == 0 {
 		err = s.db.QueryRow(ctx,
 			`INSERT INTO branch_protections (pattern, require_pull_request, required_approvals, dismiss_stale_approvals,
-			 require_code_owner_review, block_on_changes_requested, allow_force_push, allow_deletion, required_checks, owners)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, created_at`,
+			 require_code_owner_review, block_on_changes_requested, allow_force_push, allow_deletion, required_checks, owners,
+			 require_merge_queue, merge_queue_depth)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id, created_at`,
 			b.Pattern, b.RequirePullRequest, b.RequiredApprovals, b.DismissStaleApprovals, b.RequireCodeOwnerReview,
-			b.BlockOnChangesRequested, b.AllowForcePush, b.AllowDeletion, b.RequiredChecks, b.Owners).Scan(&b.ID, &b.CreatedAt)
+			b.BlockOnChangesRequested, b.AllowForcePush, b.AllowDeletion, b.RequiredChecks, b.Owners,
+			b.RequireMergeQueue, b.MergeQueueDepth).Scan(&b.ID, &b.CreatedAt)
 	} else {
 		_, err = s.db.Exec(ctx,
 			`UPDATE branch_protections SET pattern=$2, require_pull_request=$3, required_approvals=$4, dismiss_stale_approvals=$5,
 			 require_code_owner_review=$6, block_on_changes_requested=$7, allow_force_push=$8, allow_deletion=$9,
-			 required_checks=$10, owners=$11 WHERE id=$1`,
+			 required_checks=$10, owners=$11, require_merge_queue=$12, merge_queue_depth=$13 WHERE id=$1`,
 			b.ID, b.Pattern, b.RequirePullRequest, b.RequiredApprovals, b.DismissStaleApprovals, b.RequireCodeOwnerReview,
-			b.BlockOnChangesRequested, b.AllowForcePush, b.AllowDeletion, b.RequiredChecks, b.Owners)
+			b.BlockOnChangesRequested, b.AllowForcePush, b.AllowDeletion, b.RequiredChecks, b.Owners,
+			b.RequireMergeQueue, b.MergeQueueDepth)
 	}
 	if isUniqueViolation(err) {
 		return ErrDuplicate

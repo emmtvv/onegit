@@ -46,6 +46,60 @@ func highlight(filename string, src []byte) template.HTML {
 	return template.HTML(buf.String())
 }
 
+// highlightLines highlights source and returns one HTML fragment per line,
+// for views that lay lines out themselves (blame). Wrap them in an element
+// with class "chroma" to get the token colours.
+func highlightLines(filename string, src []byte) []template.HTML {
+	text := strings.TrimSuffix(string(src), "\n")
+	plain := func() []template.HTML {
+		lines := strings.Split(text, "\n")
+		out := make([]template.HTML, len(lines))
+		for i, l := range lines {
+			out[i] = template.HTML(template.HTMLEscapeString(l))
+		}
+		return out
+	}
+	lexer := lexers.Match(filename)
+	if lexer == nil {
+		lexer = lexers.Analyse(text)
+	}
+	if lexer == nil {
+		return plain()
+	}
+	it, err := chroma.Coalesce(lexer).Tokenise(nil, text)
+	if err != nil {
+		return plain()
+	}
+	var out []template.HTML
+	for _, line := range chroma.SplitTokensIntoLines(it.Tokens()) {
+		var b strings.Builder
+		for _, tok := range line {
+			v := template.HTMLEscapeString(strings.TrimSuffix(tok.Value, "\n"))
+			if v == "" {
+				continue
+			}
+			if cls := tokenClass(tok.Type); cls != "" {
+				b.WriteString(`<span class="` + cls + `">` + v + `</span>`)
+			} else {
+				b.WriteString(v)
+			}
+		}
+		out = append(out, template.HTML(b.String()))
+	}
+	return out
+}
+
+// tokenClass is chroma's short CSS class for a token type, falling back to
+// its broader categories.
+func tokenClass(t chroma.TokenType) string {
+	for _, tt := range []chroma.TokenType{t, t.SubCategory(), t.Category()} {
+		if cls, ok := chroma.StandardTypes[tt]; ok {
+			return cls
+		}
+	}
+	return ""
+}
+
 var chromaCSS = sync.OnceValue(func() []byte {
 	// Each theme lives in its own media block so light colours never leak
 	// into dark mode for token classes the dark style leaves undefined.

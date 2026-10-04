@@ -107,36 +107,10 @@ func (s *Service) DimensionValues(ctx context.Context, dims []*store.DeployDimen
 		case "list":
 			out[d.Name] = d.Values
 		case "paths":
-			out[d.Name] = s.discover(ctx, d.PathPattern, sha)
+			if sha != "" {
+				out[d.Name] = s.Repo.MatchDirs(ctx, sha, d.PathPattern)
+			}
 		}
-	}
-	return out
-}
-
-// discover expands a pattern with one "*" segment ("projects/*/project.yaml")
-// to the directory names that contain the rest of the pattern.
-func (s *Service) discover(ctx context.Context, pattern, sha string) []string {
-	if sha == "" {
-		return nil
-	}
-	prefix, rest, ok := strings.Cut(pattern, "*")
-	if !ok {
-		return nil
-	}
-	dir := strings.TrimSuffix(prefix, "/")
-	entries, err := s.Repo.ListTree(ctx, sha, dir)
-	if err != nil {
-		return nil
-	}
-	var out []string
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		if rest != "" && rest != "/" && s.Repo.ObjectType(ctx, sha, prefix+e.Name+rest) == "" {
-			continue
-		}
-		out = append(out, e.Name)
 	}
 	return out
 }

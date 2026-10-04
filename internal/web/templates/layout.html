@@ -13,6 +13,7 @@
 <header class="topbar">
   <div class="container topbar-inner">
     <a class="brand" href="/">{{template "icon-logo"}}<span>{{.Cfg.Repo.Name}}</span></a>
+    {{if or .User .Cfg.Repo.PublicRead}}<form class="topbar-search" method="get" action="/search" role="search"><input type="search" name="q" placeholder="Search code" aria-label="Search code"></form>{{end}}
     <div class="spacer"></div>
     {{if .User}}
       <details class="dropdown user-menu">
@@ -37,6 +38,7 @@
     <a class="{{if eq .Tab "commits"}}active{{end}}" href="/commits/{{pathesc .Branch}}">{{template "icon-commit"}}Commits</a>
     <a class="{{if eq .Tab "branches"}}active{{end}}" href="/branches">{{template "icon-branch"}}Branches</a>
     <a class="{{if eq .Tab "tags"}}active{{end}}" href="/tags">{{template "icon-tag"}}Tags</a>
+    {{if .Projects}}<a class="{{if eq .Tab "projects"}}active{{end}}" href="/projects">{{template "icon-project"}}Projects</a>{{end}}
     <a class="{{if eq .Tab "pulls"}}active{{end}}" href="/pulls">{{template "icon-pr"}}Pull requests{{if .OpenPulls}}<span class="counter">{{.OpenPulls}}</span>{{end}}</a>
     {{if .Cfg.Registry.Enabled}}<a class="{{if eq .Tab "packages"}}active{{end}}" href="/packages">{{template "icon-package"}}Packages</a>{{end}}
     <a class="{{if eq .Tab "actions"}}active{{end}}" href="/actions">{{template "icon-play"}}Actions</a>

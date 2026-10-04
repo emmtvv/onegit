@@ -77,7 +77,12 @@
         {{if eq .Kind "pushed"}}<span class="tl-badge">{{template "icon-commit"}}</span><span><strong>{{.ActorName}}</strong>
           {{if index .Data "forced"}}force-pushed <code class="sha">{{shortsha (print (index .Data "from"))}}</code> → <a class="sha" href="/commit/{{index .Data "to"}}">{{shortsha (print (index .Data "to"))}}</a>
           {{else}}pushed {{index .Data "count"}} commit{{if ne (print (index .Data "count")) "1"}}s{{end}} (<a class="sha" href="/commit/{{index .Data "to"}}">{{shortsha (print (index .Data "to"))}}</a>){{end}}</span>
-        {{else if eq .Kind "merged"}}<span class="tl-badge tl-merged">{{template "icon-merge"}}</span><span><strong>{{.ActorName}}</strong> merged commit <a class="sha" href="/commit/{{index .Data "sha"}}">{{shortsha (print (index .Data "sha"))}}</a> <span class="muted">({{index .Data "style"}})</span></span>
+        {{else if eq .Kind "merged"}}<span class="tl-badge tl-merged">{{template "icon-merge"}}</span><span><strong>{{.ActorName}}</strong> merged commit <a class="sha" href="/commit/{{index .Data "sha"}}">{{shortsha (print (index .Data "sha"))}}</a> <span class="muted">({{index .Data "style"}}{{if index .Data "queue"}}, via the merge queue{{end}})</span></span>
+        {{else if eq .Kind "auto_merge_enabled"}}<span class="tl-badge">{{template "icon-merge"}}</span><span><strong>{{.ActorName}}</strong> enabled auto-merge <span class="muted">({{index .Data "style"}})</span></span>
+        {{else if eq .Kind "auto_merge_disabled"}}<span class="tl-badge">{{template "icon-merge"}}</span><span><strong>{{.ActorName}}</strong> disabled auto-merge{{with index .Data "reason"}} <span class="muted">— {{.}}</span>{{end}}</span>
+        {{else if eq .Kind "queued"}}<span class="tl-badge">{{template "icon-queue"}}</span><span><strong>{{.ActorName}}</strong> added this to the <a href="/pulls/queue">merge queue</a></span>
+        {{else if eq .Kind "dequeued"}}<span class="tl-badge">{{template "icon-queue"}}</span><span><strong>{{.ActorName}}</strong> removed this from the merge queue <span class="muted">— {{index .Data "reason"}}</span></span>
+        {{else if eq .Kind "queue_failed"}}<span class="tl-badge tl-bad">{{template "icon-queue"}}</span><span>The merge queue removed this <span class="muted">— {{index .Data "reason"}}</span></span>
         {{else if eq .Kind "closed"}}<span class="tl-badge tl-bad">{{template "icon-pr-closed"}}</span><span><strong>{{.ActorName}}</strong> closed this</span>
         {{else if eq .Kind "reopened"}}<span class="tl-badge tl-ok">{{template "icon-pr"}}</span><span><strong>{{.ActorName}}</strong> reopened this</span>
         {{else if eq .Kind "head_deleted"}}<span class="tl-badge">{{template "icon-branch"}}</span><span><strong>{{.ActorName}}</strong> deleted the head branch by pushing</span>
@@ -177,13 +182,36 @@
   </div>
   <div class="merge-section">
     {{if not $st.Mergeable}}<ul class="blockers">{{range $st.Blockers}}<li>{{.}}</li>{{end}}</ul>{{end}}
-    {{if $d.CanWrite}}
+    {{if $p.AutoMerge}}
+    <div class="merge-line auto-merge-on"><span class="tl-badge tl-ok">{{template "icon-merge"}}</span>
+      <span><strong>Auto-merge is enabled</strong> by {{$p.AutoMergeByName}} <span class="muted small">({{$p.AutoMergeStyle}}{{if $st.QueueRequired}}; joins the merge queue{{end}} once every requirement is met)</span></span>
+      <span class="spacer"></span>
+      {{if or $d.CanWrite $d.IsAuthor}}<form method="post" action="/pulls/{{$p.ID}}/auto-merge"><button class="btn btn-sm" name="action" value="disable" type="submit">Disable auto-merge</button></form>{{end}}
+    </div>
+    {{end}}
+    {{with $d.Queue}}
+    <div class="merge-line queue-on"><span class="tl-badge tl-pending">{{template "icon-queue"}}</span>
+      <span><strong>In the merge queue</strong> — position {{$d.QueuePos}} of {{$d.QueueLen}}
+        {{if .TestSHA}}<span class="muted small">· testing <a class="sha" href="/commit/{{.TestSHA}}">{{shortsha .TestSHA}}</a> ({{.BaseBranch}} with the PRs ahead)</span>{{else}}<span class="muted small">· waiting for its turn</span>{{end}}</span>
+      <span class="spacer"></span>
+      <a class="btn btn-sm" href="/pulls/queue">View queue</a>
+      {{if or $d.CanWrite $d.IsAuthor}}<form method="post" action="/pulls/{{$p.ID}}/queue"><button class="btn btn-sm btn-danger" name="action" value="remove" type="submit">Remove</button></form>{{end}}
+    </div>
+    {{range $d.QueueChecks}}<div class="merge-sub">{{template "status-icon" .State}}<a href="{{.TargetURL}}"><strong>{{.Context}}</strong></a> <span class="muted small">{{.Description}}</span></div>{{end}}
+    {{end}}
+    {{if and $d.CanWrite (not $d.Queue)}}
     <form method="post" action="/pulls/{{$p.ID}}/merge" class="form merge-form">
       <div class="merge-controls">
         <select name="style" onchange="mergeStyle(this)">
           {{range $d.Styles}}<option value="{{.Style}}" data-title="{{.Title}}" data-body="{{.Body}}">{{if eq (print .Style) "squash"}}Squash and merge{{else if eq (print .Style) "merge"}}Create a merge commit{{else}}Rebase and merge{{end}}</option>{{end}}
         </select>
-        <button class="btn btn-primary" type="submit" {{if not $st.Mergeable}}disabled{{end}}>{{template "icon-merge"}}Merge pull request</button>
+        {{if $st.QueueRequired}}
+          <button class="btn btn-primary" type="submit" formaction="/pulls/{{$p.ID}}/queue" {{if not $st.Mergeable}}disabled{{end}}>{{template "icon-queue"}}Add to merge queue</button>
+          {{if and (not $st.Mergeable) (not $p.AutoMerge)}}<button class="btn" type="submit" formaction="/pulls/{{$p.ID}}/auto-merge" title="Queue it automatically once approvals and checks are in">Queue when ready</button>{{end}}
+        {{else}}
+          <button class="btn btn-primary" type="submit" {{if not $st.Mergeable}}disabled{{end}}>{{template "icon-merge"}}Merge pull request</button>
+          {{if and (not $st.Mergeable) (not $p.AutoMerge)}}<button class="btn" type="submit" formaction="/pulls/{{$p.ID}}/auto-merge" title="Merge automatically once approvals and checks are in">Enable auto-merge</button>{{end}}
+        {{end}}
       </div>
       {{with index $d.Styles 0}}
       <div class="merge-msg">
@@ -193,7 +221,7 @@
       {{end}}
       <label class="check"><input type="checkbox" name="delete_branch" checked> Delete <span class="branch-name">{{$p.HeadBranch}}</span> after merging</label>
     </form>
-    {{else}}<div class="muted">Only users with write access can merge pull requests.</div>{{end}}
+    {{else if not $d.CanWrite}}<div class="muted">Only users with write access can merge pull requests.</div>{{end}}
   </div>
 </div>
 {{end}}

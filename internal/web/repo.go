@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"path"
 	"strconv"
+	"strings"
 	"time"
 
 	"onegit/internal/git"
+	"onegit/internal/projects"
 	"onegit/internal/store"
 )
 
@@ -88,12 +90,21 @@ func (w *Web) tree(rw http.ResponseWriter, r *http.Request) {
 	}
 	branches, _ := w.Repo.Branches(ctx)
 	tags, _ := w.Repo.Tags(ctx)
+	owners := w.Projects.Owners(ctx, rv.Ref.SHA, rv.Path, true)
+	var project *projects.Project
+	if list, _, err := w.Projects.List(ctx); err == nil {
+		for _, p := range list {
+			if rv.Path == p.Dir || strings.HasPrefix(rv.Path, p.Dir+"/") {
+				project = &p
+			}
+		}
+	}
 	w.render(rw, r, http.StatusOK, "tree", &Page{
 		Title: titleFor(w.Cfg.Repo.Name, rv.Path), Tab: "code",
 		Data: map[string]any{
 			"Ref": rv.Ref, "Path": rv.Path, "Rows": rows, "Head": head,
 			"Readme": readme, "ReadmeHTML": readmeHTML,
-			"Branches": branches, "Tags": tags,
+			"Branches": branches, "Tags": tags, "Owners": owners, "Project": project,
 		},
 	})
 }
@@ -145,6 +156,7 @@ func (w *Web) blob(rw http.ResponseWriter, r *http.Request) {
 	data := map[string]any{"Ref": rv.Ref, "Path": rv.Path, "Name": name, "Size": size}
 	commit, _ := w.Repo.LastCommitFor(ctx, rv.Ref.SHA, rv.Path)
 	data["Commit"] = commit
+	data["Owners"] = w.Projects.Owners(ctx, rv.Ref.SHA, rv.Path, false)
 
 	switch {
 	case isImage(name):

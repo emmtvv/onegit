@@ -4,6 +4,7 @@
     <a class="btn {{if eq $d.Kind "pipeline"}}active{{end}}" href="/actions">Pipelines</a>
     <a class="btn {{if eq $d.Kind "deploy"}}active{{end}}" href="/actions?kind=deploy">Deploy runs</a>
   </div>
+  {{if eq $d.Kind "pipeline"}}{{template "project-filter" (dict "Projects" $d.Projects "Current" $d.Project "Base" "/actions?")}}{{end}}
   <span class="spacer"></span>
   {{if and $d.CanWrite $d.Manual}}
   <form method="post" action="/actions/run" class="inline-form">
@@ -13,6 +14,15 @@
   </form>
   {{end}}
 </div>
+{{if $d.Schedules}}
+<div class="box">
+  <div class="box-header"><strong>Schedules</strong> <span class="muted small">pipelines on <span class="mono">{{$d.Branch}}</span> started by their cron</span></div>
+  <table class="table"><tbody>{{range $d.Schedules}}
+    <tr><td><strong>{{.Pipeline}}</strong> <span class="muted small mono">{{.File}}</span></td><td class="mono">{{.Cron}}{{if .Timezone}} <span class="muted">{{.Timezone}}</span>{{end}}</td>
+      <td class="muted">{{if .Next.IsZero}}never{{else}}next <span title="{{datetime .Next}}">{{datetime .Next}}</span>{{end}}</td></tr>
+  {{end}}</tbody></table>
+</div>
+{{end}}
 <div class="box">
 {{range $d.Runs}}
   <div class="run-row">
@@ -28,7 +38,7 @@
 {{end}}
 </div>
 <div class="pager">
-  {{if gt $d.Page 1}}<a class="btn" href="?kind={{$d.Kind}}&page={{sub $d.Page 1}}">Newer</a>{{end}}
-  {{if $d.HasNext}}<a class="btn" href="?kind={{$d.Kind}}&page={{add $d.Page 1}}">Older</a>{{end}}
+  {{if gt $d.Page 1}}<a class="btn" href="?kind={{$d.Kind}}&project={{$d.Project}}&page={{sub $d.Page 1}}">Newer</a>{{end}}
+  {{if $d.HasNext}}<a class="btn" href="?kind={{$d.Kind}}&project={{$d.Project}}&page={{add $d.Page 1}}">Older</a>{{end}}
 </div>
 {{end}}

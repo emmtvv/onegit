@@ -49,6 +49,11 @@ type Assignment struct {
 	Steps        []Step            `json:"steps"`
 	TimeoutSec   int               `json:"timeout"`
 	ChangedFiles []string          `json:"changed_files,omitempty"`
+	// Artifacts to upload after the steps, artifacts of needed jobs to put
+	// into the workspace first, and the cache to restore and save.
+	Artifacts *ArtifactsSpec `json:"artifacts,omitempty"`
+	Downloads []ArtifactRef  `json:"downloads,omitempty"`
+	Cache     *CacheSpec     `json:"cache,omitempty"`
 }
 
 type LogRequest struct {
@@ -71,6 +76,11 @@ func (s *Service) RunnerAPI() http.Handler {
 	mux.HandleFunc("POST /api/runner/v1/jobs/{id}/log", s.withJob(s.jobLog))
 	mux.HandleFunc("POST /api/runner/v1/jobs/{id}/steps", s.withJob(s.jobSteps))
 	mux.HandleFunc("POST /api/runner/v1/jobs/{id}/finish", s.withJob(s.jobFinish))
+	mux.HandleFunc("PUT /api/runner/v1/jobs/{id}/artifacts", s.withJob(s.uploadArtifacts))
+	mux.HandleFunc("GET /api/runner/v1/jobs/{id}/artifacts/{aid}", s.withJob(s.downloadArtifact))
+	mux.HandleFunc("GET /api/runner/v1/jobs/{id}/cache", s.withJob(s.findCache))
+	mux.HandleFunc("GET /api/runner/v1/jobs/{id}/cache/{cid}", s.withJob(s.downloadCache))
+	mux.HandleFunc("PUT /api/runner/v1/jobs/{id}/cache", s.withJob(s.uploadCache))
 	return mux
 }
 
@@ -184,6 +194,12 @@ func (s *Service) assignment(ctx context.Context, j *store.Job, token string) (*
 		ID: j.ID, RunID: run.ID, Name: j.Name, Kind: j.Kind, Token: token,
 		RepoURL: s.Cfg.HTTPCloneURL(), SHA: run.SHA, Ref: run.Ref,
 		Steps: p.Steps, TimeoutSec: p.TimeoutSec, ChangedFiles: run.ChangedFiles,
+		Artifacts: p.Artifacts, Cache: p.Cache,
+	}
+	if j.Kind == "ci" {
+		if a.Downloads, err = s.downloadsFor(ctx, j); err != nil {
+			return nil, err
+		}
 	}
 	if j.Kind == "deploy" {
 		if run.DeploymentID != nil {

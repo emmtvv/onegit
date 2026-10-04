@@ -28,6 +28,8 @@
     <textarea name="required_checks" rows="2" class="mono">{{if $r}}{{join $r.RequiredChecks "\n"}}{{end}}</textarea></label>
   <label>Protected paths <span class="muted small">(CODEOWNERS syntax, enforced by the server whatever the repository contains, e.g. <code>/.onegit/ @sre</code>)</span>
     <textarea name="owners" rows="3" class="mono" placeholder="/.onegit/deploy/   @sre&#10;/CODEOWNERS        @admins">{{if $r}}{{$r.Owners}}{{end}}</textarea></label>
+  <label class="check"><input type="checkbox" name="require_merge_queue" {{if and $r $r.RequireMergeQueue}}checked{{end}}> Require a merge queue <span class="muted small">(PRs land through the queue, tested on top of the branch and of the PRs ahead of them)</span></label>
+  <label class="inline">Merge queue depth <input type="number" name="merge_queue_depth" min="1" max="50" value="{{if $r}}{{$r.MergeQueueDepth}}{{else}}5{{end}}"> <span class="muted small">PRs tested at once</span></label>
   <label class="check"><input type="checkbox" name="allow_force_push" {{if and $r $r.AllowForcePush}}checked{{end}}> Allow force-push</label>
   <label class="check"><input type="checkbox" name="allow_deletion" {{if and $r $r.AllowDeletion}}checked{{end}}> Allow deletion</label>
   <div><button class="btn btn-primary" type="submit">{{.Button}}</button></div>

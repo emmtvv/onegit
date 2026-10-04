@@ -1,0 +1,37 @@
+{{define "content"}}{{$d := .Data}}
+<div class="toolbar">
+  <div class="btn-group">
+    <a class="btn" href="/pulls">{{template "icon-pr"}}{{$d.Open}} Open</a>
+    <a class="btn" href="/pulls?state=closed">{{template "icon-check"}}{{$d.Closed}} Closed</a>
+    <a class="btn active" href="/pulls/queue">{{template "icon-queue"}}Merge queue</a>
+  </div>
+</div>
+{{range $d.Queues}}{{$q := .}}
+<div class="box">
+  <div class="box-header">{{template "icon-branch"}}<strong class="branch-name">{{.Branch}}</strong> <span class="muted small">{{len .Entries}} pull request{{if ne (len .Entries) 1}}s{{end}} queued</span></div>
+  {{range $i, $e := .Entries}}
+  <div class="pull-row queue-row">
+    <span class="queue-pos">{{add $i 1}}</span>
+    <div class="grow">
+      <a class="pull-title muted-link" href="/pulls/{{$e.PullID}}">{{$e.PullTitle}}</a> <span class="muted">#{{$e.PullID}}</span>
+      <div class="muted small">queued by {{$e.EnqueuedByName}} <span title="{{datetime $e.CreatedAt}}">{{ago $e.CreatedAt}}</span> · {{$e.Style}}
+        {{if $e.TestSHA}}· testing <a class="sha" href="/commit/{{$e.TestSHA}}">{{shortsha $e.TestSHA}}</a>{{else}}· waiting{{end}}</div>
+    </div>
+    <div class="run-jobs">{{range index $q.Checks $e.ID}}<a href="{{.TargetURL}}" title="{{.Context}}: {{.State}}">{{template "status-icon" .State}}</a>{{end}}</div>
+  </div>
+  {{end}}
+</div>
+{{else}}
+<div class="box blob-note">The merge queue is empty. Branches whose protection rule requires a merge queue take pull requests through it: each queued PR is tested on top of the branch and of the PRs ahead of it, and lands when its checks pass.</div>
+{{end}}
+{{if $d.Recent}}
+<div class="box">
+  <div class="box-header"><strong>Recently</strong></div>
+  <table class="table"><tbody>{{range $d.Recent}}
+    <tr><td><a href="/pulls/{{.PullID}}">#{{.PullID}}</a> {{.PullTitle}}</td><td class="mono small">{{.BaseBranch}}</td>
+      <td><span class="badge badge-st badge-{{.State}}">{{.State}}</span>{{if .Reason}} <span class="muted small">{{.Reason}}</span>{{end}}</td>
+      <td class="muted" title="{{datetime (deref_time .FinishedAt)}}">{{ago (deref_time .FinishedAt)}}</td></tr>
+  {{end}}</tbody></table>
+</div>
+{{end}}
+{{end}}

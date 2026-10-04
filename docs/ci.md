@@ -20,6 +20,12 @@ on:
     paths-ignore: ["**/*.md"]
   pull_request:
     branches: [main]          # base branches
+  merge_queue:                # merge queue candidates (pull_request pipelines run there too)
+    branches: [main]
+  schedule:                   # from the default branch
+    - cron: "0 3 * * *"       # minute hour day month weekday, UTC
+    - cron: "@hourly"
+      timezone: Europe/Berlin
   manual:                     # "Run" button on the Actions page
 env:
   GOFLAGS: -mod=readonly
@@ -52,6 +58,94 @@ jobs:
   compares with where it forked from the default branch.
 - Invalid pipeline files are reported as a failed `onegit / pipelines`
   status on the commit.
+- `events:` on a job limits it to some events (`push`, `pull_request`,
+  `merge_queue`, `schedule`, `manual`); a job for `pull_request` also runs in
+  the merge queue.
+
+### Schedules
+
+`schedule` runs the pipeline from the tip of the default branch whenever its
+cron expression comes due: five fields (minute, hour, day of month, month,
+day of week) with lists, ranges, steps and names (`*/15 9-18 * * mon-fri`),
+or `@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`. Times are UTC
+unless `timezone` names an IANA zone. A new schedule waits for its next time;
+times missed while the server was down collapse into one run. The Actions
+page lists the schedules with their next run. Jobs see
+`ONEGIT_EVENT=schedule`.
+
+### Matrix
+
+```yaml
+jobs:
+  test:
+    runs-on: ["${matrix.os}"]
+    matrix:
+      go: ["1.22", "1.23"]
+      os: [linux, arm64]
+      exclude: [{go: "1.22", os: arm64}]
+      include: [{go: "1.24", os: linux}]
+    steps:
+      - run: go${matrix.go} test ./...
+  report:
+    needs: test               # waits for every job of the matrix
+    steps: [{run: ./report.sh}]
+```
+
+A job runs once per combination: the cross product of the lists, minus the
+`exclude` entries, plus the `include` entries. The jobs are named
+`test (1.22, linux)` and report the status `<pipeline> / test (1.22, linux)`.
+`${matrix.<key>}` is replaced in `runs-on`, `env`, the cache key and the
+steps' `run`, `name` and `working-directory`; the values are also in
+`MATRIX_<KEY>` (upper case). A job that `needs` a matrix job waits for all of
+its combinations and is skipped if one of them does not succeed. A matrix
+has at most 256 combinations.
+
+### Artifacts
+
+```yaml
+jobs:
+  build:
+    artifacts:
+      paths: [dist/, "reports/*.xml"]   # files, directories or globs in the workspace
+      when: on_success                  # on_failure or always
+      expire-in: 7d                     # default ONEGIT_CI_ARTIFACT_RETENTION_DAYS
+    steps: [{run: make dist}]
+  e2e:
+    needs: build                        # gets dist/ and reports/ in its workspace
+    steps: [{run: ./e2e.sh dist/}]
+```
+
+After its steps a job packs the paths into a tar.gz and uploads it to S3.
+Jobs that `needs` it find the files at the same paths in their workspace
+before their steps start. Run and job pages offer the archive for download
+until it expires. A failed upload fails the job.
+
+### Caches
+
+```yaml
+jobs:
+  test:
+    cache:
+      key: go-${matrix.go}
+      key-files: [go.sum]               # their hash is added to the key
+      paths: [.cache/go]
+      policy: pull-push                 # pull (restore only) or push (save only)
+    env: {GOMODCACHE: "$ONEGIT_WORKSPACE/.cache/go"}
+    steps: [{run: go test ./...}]
+```
+
+Before the steps the runner restores the cache whose key is `key` plus a hash
+of `key-files`; without an exact match it takes the newest cache whose key
+starts with `key-`. After successful steps it saves the paths under the exact
+key, unless that key was restored. Caches are immutable and scoped to the
+ref that saved them: a job reads its own branch's (or pull request's)
+caches and the default branch's, and writes only its own, so a branch cannot
+change what `main` restores. Caches unused for
+`ONEGIT_CI_CACHE_RETENTION_DAYS` are removed, and the least recently used go
+when the total exceeds `ONEGIT_CI_MAX_CACHE_SIZE`.
+
+Paths of artifacts and caches stay inside the workspace: archives whose
+entries would land outside it are refused.
 
 Every job reports a **commit status** named `<pipeline> / <job>` (skipped
 counts as passing). Branch protection can require them, and pull requests
@@ -67,10 +161,11 @@ commit. Environment:
 | `CI`, `ONEGIT` | `true` |
 | `ONEGIT_SERVER_URL`, `ONEGIT_REPOSITORY` | Base URL and repository name |
 | `ONEGIT_REGISTRY` | Registry host for `docker login` / image names |
-| `ONEGIT_EVENT` | `push`, `pull_request`, `manual` or `deploy` |
-| `ONEGIT_REF`, `ONEGIT_REF_NAME` | `refs/heads/main` and `main`; `refs/pull/7/head` for pull requests |
+| `ONEGIT_EVENT` | `push`, `pull_request`, `merge_queue`, `schedule`, `manual` or `deploy` |
+| `ONEGIT_REF`, `ONEGIT_REF_NAME` | `refs/heads/main` and `main`; `refs/pull/7/head` for pull requests, `refs/merge-queue/<n>` in the merge queue |
 | `ONEGIT_SHA`, `ONEGIT_BEFORE_SHA` | The commit, and the previous tip (pushes) or merge base (pull requests) |
-| `ONEGIT_PULL_REQUEST` | Pull request number |
+| `ONEGIT_PULL_REQUEST` | Pull request number (pull requests and the merge queue) |
+| `MATRIX_<KEY>` | Matrix values of the job |
 | `ONEGIT_CHANGED_FILES` | Path of a file listing the changed paths, one per line |
 | `ONEGIT_RUN_ID`, `ONEGIT_JOB_ID`, `ONEGIT_JOB`, `ONEGIT_PIPELINE`, `ONEGIT_ACTOR` | |
 | `ONEGIT_TOKEN` | Job token, valid while the job runs |

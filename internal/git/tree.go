@@ -127,3 +127,28 @@ func IsBinary(b []byte) bool {
 	}
 	return bytes.IndexByte(b, 0) >= 0
 }
+
+// MatchDirs expands a pattern with one "*" segment ("services/*" or
+// "projects/*/project.yaml") to the names of the directories at the "*"
+// that contain the rest of the pattern.
+func (r *Repo) MatchDirs(ctx context.Context, commit, pattern string) []string {
+	prefix, rest, ok := strings.Cut(pattern, "*")
+	if !ok {
+		return nil
+	}
+	entries, err := r.ListTree(ctx, commit, strings.TrimSuffix(prefix, "/"))
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if rest != "" && rest != "/" && r.ObjectType(ctx, commit, prefix+e.Name+rest) == "" {
+			continue
+		}
+		out = append(out, e.Name)
+	}
+	return out
+}

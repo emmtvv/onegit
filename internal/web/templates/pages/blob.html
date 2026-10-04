@@ -2,8 +2,13 @@
 <div class="toolbar">
   {{template "breadcrumbs" (dict "Ref" $ref "Path" $d.Path "Repo" .Cfg.Repo.Name)}}
   <span class="spacer"></span>
+  <div class="btn-group">
+    <a class="btn btn-sm active" href="/blob/{{pathesc $ref $d.Path}}">Code</a>
+    <a class="btn btn-sm" href="/blame/{{pathesc $ref $d.Path}}">Blame</a>
+  </div>
   <a class="btn btn-sm" href="/commits/{{pathesc $ref $d.Path}}">{{template "icon-history"}}History</a>
 </div>
+{{template "owners-line" $d.Owners}}
 <div class="box">
   {{with $d.Commit}}<div class="box-header">{{template "commitline" .}}</div>{{end}}
   <div class="box-header file-header">

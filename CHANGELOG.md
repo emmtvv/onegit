@@ -7,6 +7,46 @@ include breaking changes, always described here.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-04
+
+### Added
+
+- **Blame** for every file: who last changed each line, coloured by age, with
+  a link to the blame from before a change.
+- **Code search** from the top bar: text or regular expressions over any
+  branch, tag or commit, file name search, and `path:` / `-path:` filters
+  with globs.
+- **Projects**: directories of the monorepo (`services/*`, set in Admin →
+  Projects or taken from a deploy dimension) get a page with their code
+  owners, open pull requests, CI runs, README and what is deployed to each
+  target. Pull requests and pipeline runs can be filtered by project; the
+  code view shows the owners of the current directory or file.
+- **Auto-merge**: a pull request merges (or joins the merge queue) once its
+  approvals, code owners and checks are in.
+- **Merge queue**, required per branch in its protection rule: queued pull
+  requests are tested on top of the branch and of the ones ahead of them,
+  several at once (merge queue depth), and land together as soon as a
+  candidate passes. Pipelines run for it with a `merge_queue` or
+  `pull_request` trigger.
+- **Scheduled pipelines** (`on: schedule: [{cron: ...}]`, with time zones),
+  listed with their next run on the Actions page.
+- **Matrix jobs**: a job runs once per combination of values, with
+  `${matrix.key}` substitution and `MATRIX_*` variables; `needs` waits for
+  the whole matrix.
+- **Artifacts**: files a job keeps (`artifacts: {paths: [...]}`) are put
+  into the workspace of the jobs that need it and can be downloaded from the
+  run and job pages until they expire.
+- **Caches** keyed by name and a hash of key files, restored before the
+  steps and saved after them, scoped per branch so that branches cannot
+  poison the default branch's caches.
+- Settings `ONEGIT_CI_MAX_ARTIFACT_SIZE`, `ONEGIT_CI_ARTIFACT_RETENTION_DAYS`,
+  `ONEGIT_CI_MAX_CACHE_SIZE` and `ONEGIT_CI_CACHE_RETENTION_DAYS`.
+
+### Fixed
+
+- Merging a pull request in the web UI did not start the push pipelines of
+  the base branch.
+
 ## [1.1.1] - 2026-10-04
 
 ### Fixed
@@ -86,7 +126,8 @@ First public release.
   amd64 and arm64, `docker-compose.yml` with the full stack, admin CLI
   (`list-users`, `reset-password`, `registry-gc`).
 
-[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/emmtvv/onegit/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/emmtvv/onegit/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/emmtvv/onegit/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/emmtvv/onegit/compare/v1.0.0...v1.0.1
