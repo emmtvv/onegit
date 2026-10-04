@@ -7,6 +7,17 @@ include breaking changes, always described here.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-04
+
+### Changed
+
+- The image runs as root and ships bash, make and the Docker CLI with
+  buildx, so it runs CI and deploy runners against the host's Docker socket
+  without a derived image. Existing repository volumes owned by uid 1000
+  keep working.
+- Restyled the merge box on pull requests: a requirements counter with a
+  progress bar, compact rows and a one-line merge form.
+
 ## [1.2.0] - 2026-10-04
 
 ### Added
@@ -126,7 +137,8 @@ First public release.
   amd64 and arm64, `docker-compose.yml` with the full stack, admin CLI
   (`list-users`, `reset-password`, `registry-gc`).
 
-[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/emmtvv/onegit/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/emmtvv/onegit/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/emmtvv/onegit/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/emmtvv/onegit/compare/v1.0.1...v1.1.0

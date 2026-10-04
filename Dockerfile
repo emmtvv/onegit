@@ -17,17 +17,18 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
 
 FROM alpine:3.24
 # git (+ git-daemon, which ships http-backend on Alpine) is the only runtime
-# dependency: onegit shells out to it for every
-# repository operation. The repo volume may be owned by another uid on some
-# platforms, so trust it explicitly.
+# dependency of the server: onegit shells out to it for every repository
+# operation. bash, make and the Docker CLI (with buildx) are there for
+# `onegit runner`, so the same image can run CI and deploy jobs against the
+# host's Docker daemon (mount /var/run/docker.sock, which is root-owned, hence
+# root). The repo volume may be owned by another uid on some platforms, so
+# trust it explicitly.
 RUN apk add --no-cache git git-daemon ca-certificates tzdata \
- && addgroup -S -g 1000 onegit \
- && adduser -S -D -u 1000 -G onegit -h /home/onegit onegit \
- && mkdir -p /data/repo && chown onegit:onegit /data/repo \
+    bash make docker-cli docker-cli-buildx \
+ && mkdir -p /data/repo \
  && git config --system safe.directory '*'
 COPY --from=build /out/onegit /usr/local/bin/onegit
 
-USER onegit
 ENV ONEGIT_REPO_DIR=/data/repo \
     ONEGIT_HTTP_ADDR=:3000
 # The git repository is the only on-disk state; everything else lives in

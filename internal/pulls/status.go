@@ -61,6 +61,111 @@ type Status struct {
 
 func (st *Status) Mergeable() bool { return len(st.Blockers) == 0 }
 
+// Requirement states for the merge box: "ok", "bad", "wait" (checks still
+// running) or "optional" (code owners whose review is not required).
+
+func (st *Status) ApprovalsState() string {
+	if st.Protection != nil && st.Approvals < st.Required {
+		return "bad"
+	}
+	return "ok"
+}
+
+// ChecksState is "" when the PR has no checks and none are required.
+func (st *Status) ChecksState() string {
+	if len(st.Checks) == 0 && len(st.RequiredChecks) == 0 {
+		return ""
+	}
+	state := "ok"
+	for _, c := range st.Checks {
+		switch {
+		case c.State == "pending":
+			state = "wait"
+		case !c.OK():
+			return "bad"
+		}
+	}
+	for _, name := range st.RequiredChecks {
+		if !hasCheck(st.Checks, name) {
+			state = "wait"
+		}
+	}
+	return state
+}
+
+// OwnerRequired: the group's review blocks the merge.
+func (st *Status) OwnerRequired(g *OwnerGroup) bool {
+	return g.Server || (st.Protection != nil && st.Protection.RequireCodeOwnerReview)
+}
+
+// OwnersState is "" when no changed file has code owners.
+func (st *Status) OwnersState() string {
+	if len(st.OwnerGroups) == 0 {
+		return ""
+	}
+	state := "ok"
+	for _, g := range st.OwnerGroups {
+		if g.Satisfied() {
+			continue
+		}
+		if st.OwnerRequired(g) {
+			return "bad"
+		}
+		state = "optional"
+	}
+	return state
+}
+
+func (st *Status) ConflictsState() string {
+	if len(st.Conflicts) > 0 || !st.BaseExists {
+		return "bad"
+	}
+	return "ok"
+}
+
+// Requirements lists the states of the requirements that apply to the PR,
+// in the order the merge box shows them.
+func (st *Status) Requirements() []string {
+	var out []string
+	for _, s := range []string{st.ApprovalsState(), st.ChecksState(), st.OwnersState(), st.ConflictsState()} {
+		if s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// RequirementsMet counts the requirements that do not hold the merge back.
+func (st *Status) RequirementsMet() int {
+	n := 0
+	for _, s := range st.Requirements() {
+		if s == "ok" || s == "optional" {
+			n++
+		}
+	}
+	return n
+}
+
+// Overall is "ok", "wait" (mergeable, checks still running) or "bad".
+func (st *Status) Overall() string {
+	switch {
+	case !st.Mergeable():
+		return "bad"
+	case st.ChecksState() == "wait":
+		return "wait"
+	}
+	return "ok"
+}
+
+func hasCheck(checks []*store.CommitStatus, name string) bool {
+	for _, c := range checks {
+		if c.Context == name {
+			return true
+		}
+	}
+	return false
+}
+
 // Status evaluates an open PR.
 func (s *Service) Status(ctx context.Context, p *store.Pull, reviews []*store.PullReview) (*Status, error) {
 	return s.status(ctx, p, reviews, false)

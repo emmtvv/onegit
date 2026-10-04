@@ -198,14 +198,16 @@ or with Docker:
 
 ```sh
 docker run -d --name onegit-runner --restart unless-stopped \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -e ONEGIT_RUNNER_URL=https://git.example.com -e ONEGIT_RUNNER_TOKEN=ogrun_... \
-  -e ONEGIT_RUNNER_WORKDIR=/home/onegit/work \
+  -e ONEGIT_RUNNER_WORKDIR=/root/work \
   emmtvv/onegit runner
 ```
 
-The image only has git and a shell; for real builds, derive an image with
-the tools your steps need (compilers, the Docker CLI, ...), or run the binary
-on the host.
+The image runs as root and has git, bash, make and the Docker CLI with
+buildx. Steps talk to the host's Docker daemon through the mounted socket;
+leave it out if your steps don't use Docker. For other tools (compilers, ...),
+derive an image from this one or run the binary on the host.
 
 A runner takes jobs whose `runs-on` labels are a subset of its own. Steps
 run **directly on the runner host**, in their own process group: cancelling

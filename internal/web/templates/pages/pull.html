@@ -119,112 +119,106 @@
 </div>
 {{end}}
 
-{{define "merge-box"}}{{$d := .Data}}{{$p := $d.Pull}}{{$st := $d.Status}}
-<div class="box merge-box {{if $st.Mergeable}}merge-ok{{else}}merge-blocked{{end}}">
-  <div class="merge-section">
-    <div class="merge-line">
-      {{if and $st.Protection (lt $st.Approvals $st.Required)}}<span class="tl-badge tl-bad">{{template "icon-x"}}</span>{{else}}<span class="tl-badge tl-ok">{{template "icon-check"}}</span>{{end}}
-      <strong>{{if $st.Protection}}{{$st.Approvals}} of {{$st.Required}} required approval{{if ne $st.Required 1}}s{{end}}{{else}}{{$st.Approvals}} approval{{if ne $st.Approvals 1}}s{{end}}{{end}}</strong>
-      {{with $st.Protection}}<span class="muted small">{{template "icon-shield"}} {{$p.BaseBranch}} is protected by rule <code>{{.Pattern}}</code></span>{{end}}
-    </div>
-    {{range $st.Verdicts}}
-    <div class="merge-sub">{{avatar .Name .Email}} <strong>{{.Name}}</strong>
-      {{if eq (print .State) "approved"}}<span class="text-add">approved</span>{{if .Stale}} <span class="badge">stale</span>{{else if not .Counts}} <span class="muted small">(does not count)</span>{{end}}
-      {{else}}<span class="text-del">requested changes</span>{{end}}
-      <span class="muted small">{{ago .When}}</span></div>
-    {{end}}
+{{define "merge-box"}}{{$d := .Data}}{{$p := $d.Pull}}{{$st := $d.Status}}{{$reqs := $st.Requirements}}
+<div class="box merge-box">
+  <div class="mb-top">
+    <h3>{{$st.RequirementsMet}}<small>of {{len $reqs}} requirement{{if ne (len $reqs) 1}}s{{end}} met</small></h3>
+    {{with $st.Overall}}<span class="mb-pill mb-{{.}}">{{if eq . "ok"}}Ready to merge{{else if eq . "wait"}}Checks running{{else}}Blocked{{end}}</span>{{end}}
   </div>
-  {{if or $st.Checks $st.RequiredChecks}}
-  <div class="merge-section">
-    <div class="merge-line">
-      {{$bad := false}}{{$pending := false}}{{range $st.Checks}}{{if eq .State "pending"}}{{$pending = true}}{{else if not .OK}}{{$bad = true}}{{end}}{{end}}
-      {{if $bad}}<span class="tl-badge tl-bad">{{template "icon-x"}}</span><strong>Some checks failed</strong>
-      {{else if $pending}}<span class="tl-badge tl-pending">{{template "icon-dot"}}</span><strong>Checks are running</strong>
-      {{else}}<span class="tl-badge tl-ok">{{template "icon-check"}}</span><strong>All checks passed</strong>{{end}}
-    </div>
-    {{range $st.Checks}}
-    <div class="merge-sub">{{template "status-icon" .State}}<a href="{{.TargetURL}}"><strong>{{.Context}}</strong></a>
-      <span class="muted small">{{.Description}}</span>{{if inlist $st.RequiredChecks .Context}} <span class="badge">required</span>{{end}}</div>
-    {{end}}
-    {{range $st.RequiredChecks}}{{if not (hascheck $st.Checks .)}}<div class="merge-sub">{{template "status-icon" "pending"}}<strong>{{.}}</strong> <span class="muted small">expected — has not run</span> <span class="badge">required</span></div>{{end}}{{end}}
-  </div>
-  {{end}}
-  {{if $st.OwnerGroups}}
-  <div class="merge-section">
-    <div class="merge-line">
-      {{$ok := true}}{{range $st.OwnerGroups}}{{if not .Satisfied}}{{$ok = false}}{{end}}{{end}}
-      {{$required := and $st.Protection $st.Protection.RequireCodeOwnerReview}}
-      {{if $ok}}<span class="tl-badge tl-ok">{{template "icon-check"}}</span>{{else if $required}}<span class="tl-badge tl-bad">{{template "icon-x"}}</span>{{else}}<span class="tl-badge">{{template "icon-comment"}}</span>{{end}}
-      <strong>Code owners</strong>
-      <span class="muted small">{{if $st.CodeOwnersFile}}from <code>{{$st.CodeOwnersFile}}</code>{{if not $required}} · file owners not required{{end}}{{else}}from the branch protection rule{{end}}</span>
-    </div>
-    {{range $st.OwnerGroups}}
-    <details class="merge-sub owners">
-      <summary>{{if .Server}}<span class="badge" title="Server-side owners from the branch protection rule">rule</span> {{end}}<code>{{.Pattern}}</code> → {{range $i, $o := .Owners}}{{if $i}}, {{end}}{{$o}}{{end}}
-        {{if .ApprovedBy}}<span class="text-add">approved by {{range $i, $o := .ApprovedBy}}{{if $i}}, {{end}}{{$o}}{{end}}</span>{{else if .Resolvable}}<span class="muted">waiting for review</span>{{else}}<span class="muted">no known owners</span>{{end}}
-        <span class="muted small">({{len .Files}} file{{if ne (len .Files) 1}}s{{end}})</span></summary>
-      <ul class="mono small">{{range .Files}}<li>{{.}}</li>{{end}}</ul>
-    </details>
-    {{end}}
-  </div>
-  {{end}}
-  <div class="merge-section">
-    <div class="merge-line">
-      {{if $st.Conflicts}}<span class="tl-badge tl-bad">{{template "icon-x"}}</span><strong>This branch has conflicts that must be resolved</strong>
-      {{else if $st.BaseExists}}<span class="tl-badge tl-ok">{{template "icon-check"}}</span><strong>No conflicts with the base branch</strong>
-      {{else}}<span class="tl-badge tl-bad">{{template "icon-x"}}</span><strong>The base branch does not exist</strong>{{end}}
-    </div>
-    {{if $st.Conflicts}}
-    <div class="merge-sub muted small">Conflicting files:</div>
-    <ul class="mono small conflict-list">{{range $st.Conflicts}}<li>{{.}}</li>{{end}}</ul>
-    <div class="merge-sub muted small">Resolve locally: <code>git fetch origin && git checkout {{$p.HeadBranch}} && git merge origin/{{$p.BaseBranch}}</code>, fix the conflicts, commit and push.</div>
-    {{end}}
-  </div>
-  <div class="merge-section">
-    {{if not $st.Mergeable}}<ul class="blockers">{{range $st.Blockers}}<li>{{.}}</li>{{end}}</ul>{{end}}
-    {{if $p.AutoMerge}}
-    <div class="merge-line auto-merge-on"><span class="tl-badge tl-ok">{{template "icon-merge"}}</span>
-      <span><strong>Auto-merge is enabled</strong> by {{$p.AutoMergeByName}} <span class="muted small">({{$p.AutoMergeStyle}}{{if $st.QueueRequired}}; joins the merge queue{{end}} once every requirement is met)</span></span>
-      <span class="spacer"></span>
-      {{if or $d.CanWrite $d.IsAuthor}}<form method="post" action="/pulls/{{$p.ID}}/auto-merge"><button class="btn btn-sm" name="action" value="disable" type="submit">Disable auto-merge</button></form>{{end}}
-    </div>
-    {{end}}
-    {{with $d.Queue}}
-    <div class="merge-line queue-on"><span class="tl-badge tl-pending">{{template "icon-queue"}}</span>
-      <span><strong>In the merge queue</strong> — position {{$d.QueuePos}} of {{$d.QueueLen}}
-        {{if .TestSHA}}<span class="muted small">· testing <a class="sha" href="/commit/{{.TestSHA}}">{{shortsha .TestSHA}}</a> ({{.BaseBranch}} with the PRs ahead)</span>{{else}}<span class="muted small">· waiting for its turn</span>{{end}}</span>
-      <span class="spacer"></span>
-      <a class="btn btn-sm" href="/pulls/queue">View queue</a>
-      {{if or $d.CanWrite $d.IsAuthor}}<form method="post" action="/pulls/{{$p.ID}}/queue"><button class="btn btn-sm btn-danger" name="action" value="remove" type="submit">Remove</button></form>{{end}}
-    </div>
-    {{range $d.QueueChecks}}<div class="merge-sub">{{template "status-icon" .State}}<a href="{{.TargetURL}}"><strong>{{.Context}}</strong></a> <span class="muted small">{{.Description}}</span></div>{{end}}
-    {{end}}
-    {{if and $d.CanWrite (not $d.Queue)}}
-    <form method="post" action="/pulls/{{$p.ID}}/merge" class="form merge-form">
-      <div class="merge-controls">
-        <select name="style" onchange="mergeStyle(this)">
-          {{range $d.Styles}}<option value="{{.Style}}" data-title="{{.Title}}" data-body="{{.Body}}">{{if eq (print .Style) "squash"}}Squash and merge{{else if eq (print .Style) "merge"}}Create a merge commit{{else}}Rebase and merge{{end}}</option>{{end}}
-        </select>
-        {{if $st.QueueRequired}}
-          <button class="btn btn-primary" type="submit" formaction="/pulls/{{$p.ID}}/queue" {{if not $st.Mergeable}}disabled{{end}}>{{template "icon-queue"}}Add to merge queue</button>
-          {{if and (not $st.Mergeable) (not $p.AutoMerge)}}<button class="btn" type="submit" formaction="/pulls/{{$p.ID}}/auto-merge" title="Queue it automatically once approvals and checks are in">Queue when ready</button>{{end}}
-        {{else}}
-          <button class="btn btn-primary" type="submit" {{if not $st.Mergeable}}disabled{{end}}>{{template "icon-merge"}}Merge pull request</button>
-          {{if and (not $st.Mergeable) (not $p.AutoMerge)}}<button class="btn" type="submit" formaction="/pulls/{{$p.ID}}/auto-merge" title="Merge automatically once approvals and checks are in">Enable auto-merge</button>{{end}}
-        {{end}}
-      </div>
-      {{with index $d.Styles 0}}
-      <div class="merge-msg">
-        <input name="title" value="{{.Title}}" aria-label="Commit title">
-        <textarea name="message" rows="4" aria-label="Commit message">{{.Body}}</textarea>
-      </div>
+  <div class="mb-bar">{{range $reqs}}<span class="mb-{{.}}"></span>{{end}}</div>
+  <div class="mb-rows">
+    {{template "merge-mark" $st.ApprovalsState}}<span class="mb-k">Approvals</span>
+    <div class="mb-v">
+      <span>{{if $st.Protection}}{{$st.Approvals}} of {{$st.Required}} required{{else if $st.Approvals}}{{$st.Approvals}} approval{{if ne $st.Approvals 1}}s{{end}}{{else}}None yet{{end}}</span>
+      {{with $st.Protection}}<span class="small">{{template "icon-shield"}} {{$p.BaseBranch}} is protected by rule <code>{{.Pattern}}</code></span>{{end}}
+      {{range $st.Verdicts}}
+      <span class="mb-chip">{{avatar .Name .Email}}<strong>{{.Name}}</strong>
+        {{if eq (print .State) "approved"}}<span class="text-add">approved</span>{{if .Stale}} <span class="badge">stale</span>{{else if not .Counts}} <span class="small">(does not count)</span>{{end}}
+        {{else}}<span class="text-del">requested changes</span>{{end}}
+        <span class="small">{{ago .When}}</span></span>
       {{end}}
-      <label class="check"><input type="checkbox" name="delete_branch" checked> Delete <span class="branch-name">{{$p.HeadBranch}}</span> after merging</label>
-    </form>
-    {{else if not $d.CanWrite}}<div class="muted">Only users with write access can merge pull requests.</div>{{end}}
+    </div>
+    {{with $st.ChecksState}}
+    {{template "merge-mark" .}}<span class="mb-k">Checks</span>
+    <div class="mb-v mb-list">
+      {{range $st.Checks}}
+      <span class="mb-chip">{{template "status-icon" .State}}<a href="{{.TargetURL}}">{{.Context}}</a>
+        <span class="small">{{.Description}}</span>{{if inlist $st.RequiredChecks .Context}} <span class="badge">required</span>{{end}}</span>
+      {{end}}
+      {{range $st.RequiredChecks}}{{if not (hascheck $st.Checks .)}}<span class="mb-chip">{{template "status-icon" "pending"}}<span class="mb-name">{{.}}</span> <span class="small">expected — has not run</span> <span class="badge">required</span></span>{{end}}{{end}}
+    </div>
+    {{end}}
+    {{with $st.OwnersState}}
+    {{template "merge-mark" .}}<span class="mb-k">Code owners</span>
+    <div class="mb-v mb-list">
+      {{range $st.OwnerGroups}}
+      <details class="mb-owners">
+        <summary>{{if .Server}}<span class="badge" title="Server-side owners from the branch protection rule">rule</span> {{end}}<code>{{.Pattern}}</code> → <span class="mb-name">{{range $i, $o := .Owners}}{{if $i}}, {{end}}{{$o}}{{end}}</span>
+          {{if .ApprovedBy}}<span class="text-add">approved by {{range $i, $o := .ApprovedBy}}{{if $i}}, {{end}}{{$o}}{{end}}</span>{{else if .Resolvable}}<span>waiting for review{{if not ($st.OwnerRequired .)}} · optional{{end}}</span>{{else}}<span>no known owners</span>{{end}}
+          <span class="small">{{len .Files}} file{{if ne (len .Files) 1}}s{{end}}</span></summary>
+        <ul class="mono small">{{range .Files}}<li>{{.}}</li>{{end}}</ul>
+      </details>
+      {{end}}
+      <span class="small">{{if $st.CodeOwnersFile}}from <code>{{$st.CodeOwnersFile}}</code>{{else}}from the branch protection rule{{end}}</span>
+    </div>
+    {{end}}
+    {{template "merge-mark" $st.ConflictsState}}<span class="mb-k">Conflicts</span>
+    <div class="mb-v">
+      {{if $st.Conflicts}}<span class="text-del">{{len $st.Conflicts}} conflicting file{{if ne (len $st.Conflicts) 1}}s{{end}}</span>
+        <ul class="mono small mb-files">{{range $st.Conflicts}}<li>{{.}}</li>{{end}}</ul>
+        <span class="small">Resolve locally: <code>git fetch origin && git checkout {{$p.HeadBranch}} && git merge origin/{{$p.BaseBranch}}</code>, fix the conflicts, commit and push.</span>
+      {{else if $st.BaseExists}}<span>No conflicts with <span class="branch-name">{{$p.BaseBranch}}</span></span>
+      {{else}}<span class="text-del">The base branch does not exist</span>{{end}}
+    </div>
   </div>
+  {{if not $st.Mergeable}}<ul class="blockers">{{range $st.Blockers}}<li>{{.}}</li>{{end}}</ul>{{end}}
+  {{if $p.AutoMerge}}
+  <div class="mb-note">{{template "icon-merge"}}
+    <span><strong>Auto-merge is enabled</strong> by {{$p.AutoMergeByName}} <span class="muted small">({{$p.AutoMergeStyle}}{{if $st.QueueRequired}}; joins the merge queue{{end}} once every requirement is met)</span></span>
+    <span class="spacer"></span>
+    {{if or $d.CanWrite $d.IsAuthor}}<form method="post" action="/pulls/{{$p.ID}}/auto-merge"><button class="btn btn-sm" name="action" value="disable" type="submit">Disable auto-merge</button></form>{{end}}
+  </div>
+  {{end}}
+  {{with $d.Queue}}
+  <div class="mb-note">{{template "icon-queue"}}
+    <span><strong>In the merge queue</strong> — position {{$d.QueuePos}} of {{$d.QueueLen}}
+      {{if .TestSHA}}<span class="muted small">· testing <a class="sha" href="/commit/{{.TestSHA}}">{{shortsha .TestSHA}}</a> ({{.BaseBranch}} with the PRs ahead)</span>{{else}}<span class="muted small">· waiting for its turn</span>{{end}}</span>
+    <span class="spacer"></span>
+    <a class="btn btn-sm" href="/pulls/queue">View queue</a>
+    {{if or $d.CanWrite $d.IsAuthor}}<form method="post" action="/pulls/{{$p.ID}}/queue"><button class="btn btn-sm btn-danger" name="action" value="remove" type="submit">Remove</button></form>{{end}}
+  </div>
+  {{range $d.QueueChecks}}<div class="mb-chip mb-queue-check">{{template "status-icon" .State}}<a href="{{.TargetURL}}">{{.Context}}</a> <span class="muted small">{{.Description}}</span></div>{{end}}
+  {{end}}
+  {{if and $d.CanWrite (not $d.Queue)}}
+  <form method="post" action="/pulls/{{$p.ID}}/merge" class="mb-form">
+    {{with index $d.Styles 0}}{{$first := .}}
+    <div class="mb-merge">
+      <select name="style" onchange="mergeStyle(this)" aria-label="Merge style">
+        {{range $d.Styles}}<option value="{{.Style}}" data-title="{{.Title}}" data-body="{{.Body}}">{{if eq (print .Style) "squash"}}Squash{{else if eq (print .Style) "merge"}}Merge commit{{else}}Rebase{{end}}</option>{{end}}
+      </select>
+      <input class="merge-msg" name="title" value="{{$first.Title}}" aria-label="Commit title">
+      {{if $st.QueueRequired}}
+        <button class="btn btn-primary" type="submit" formaction="/pulls/{{$p.ID}}/queue" {{if not $st.Mergeable}}disabled{{end}}>{{template "icon-queue"}}Add to merge queue</button>
+      {{else}}
+        <button class="btn btn-primary" type="submit" {{if not $st.Mergeable}}disabled{{end}}>{{template "icon-merge"}}Merge</button>
+      {{end}}
+    </div>
+    <div class="mb-opts">
+      <label class="check"><input type="checkbox" name="delete_branch" checked> Delete <span class="branch-name">{{$p.HeadBranch}}</span></label>
+      {{if and (not $st.Mergeable) (not $p.AutoMerge)}}
+        {{if $st.QueueRequired}}<button class="btn btn-sm" type="submit" formaction="/pulls/{{$p.ID}}/auto-merge" title="Queue it automatically once approvals and checks are in">Queue when ready</button>
+        {{else}}<button class="btn btn-sm" type="submit" formaction="/pulls/{{$p.ID}}/auto-merge" title="Merge automatically once approvals and checks are in">Enable auto-merge</button>{{end}}
+      {{end}}
+      <details class="merge-msg"><summary>Commit message</summary><textarea name="message" rows="4" aria-label="Commit message">{{$first.Body}}</textarea></details>
+    </div>
+    {{end}}
+  </form>
+  {{else if not $d.CanWrite}}<div class="muted small mb-opts">Only users with write access can merge pull requests.</div>{{end}}
 </div>
 {{end}}
+
+{{/* merge-mark: a requirement state from pulls.Status */}}
+{{define "merge-mark"}}{{if eq . "ok"}}<span class="st st-ok">{{template "icon-check"}}</span>{{else if eq . "bad"}}<span class="st st-bad">{{template "icon-x"}}</span>{{else if eq . "wait"}}<span class="st st-run">{{template "icon-dot"}}</span>{{else}}<span class="st st-wait">{{template "icon-dot"}}</span>{{end}}{{end}}
 
 {{/* pull-comment: dict "C" comment "P" pull "U" user */}}
 {{define "pull-comment"}}
@@ -339,7 +333,7 @@
 
 {{define "pull-scripts"}}
 <script>
-function mergeStyle(sel){const o=sel.selectedOptions[0],f=sel.form.elements;f.title.value=o.dataset.title;f.message.value=o.dataset.body;sel.form.querySelector('.merge-msg').hidden=sel.value==='rebase'}
+function mergeStyle(sel){const o=sel.selectedOptions[0],f=sel.form.elements;f.title.value=o.dataset.title;f.message.value=o.dataset.body;sel.form.querySelectorAll('.merge-msg').forEach(e=>e.hidden=sel.value==='rebase')}
 function lineComment(btn){
   const tr=btn.closest('tr'),next=tr.nextElementSibling;
   if(next&&next.classList.contains('new-comment')){next.querySelector('textarea').focus();return}
