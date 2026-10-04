@@ -1,5 +1,5 @@
 {{define "content"}}{{$d := .Data}}{{$dep := $d.D}}{{$ev := $d.Eval}}
-<div id="deploy-live" data-status="{{$dep.Status}}">
+<div id="deploy-live" data-live="{{if inflight $dep.Status}}run{{end}}">
 <nav class="breadcrumbs"><a href="/deploy">Deployments</a><span class="sep">/</span><strong>#{{$dep.ID}}</strong></nav>
 <div class="run-header">
   {{template "status-icon" (deploystatus $dep.Status)}}
@@ -43,31 +43,4 @@
 </form>
 {{end}}
 </div>
-<script>
-(function(){
-  // Re-fetch the page while the deployment is in flight and swap the live
-  // region, keeping <details> state and not clobbering a half-typed review.
-  const live = () => document.getElementById('deploy-live');
-  const active = s => s === 'pending' || s === 'running';
-  async function poll() {
-    try {
-      const el = live();
-      const busy = [...el.querySelectorAll('input, textarea')].some(i => i === document.activeElement || i.value);
-      if (!busy) {
-        const res = await fetch(location.href, {cache: 'no-store'});
-        if (res.ok) {
-          const next = new DOMParser().parseFromString(await res.text(), 'text/html').getElementById('deploy-live');
-          if (next) {
-            const open = [...el.querySelectorAll('details')].map(d => d.open);
-            next.querySelectorAll('details').forEach((d, i) => { if (i < open.length) d.open = open[i]; });
-            el.replaceWith(next);
-          }
-        }
-      }
-    } catch (e) {}
-    if (active(live().dataset.status)) setTimeout(poll, 3000);
-  }
-  if (active(live().dataset.status)) setTimeout(poll, 3000);
-})();
-</script>
 {{end}}

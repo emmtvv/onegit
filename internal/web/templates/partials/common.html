@@ -88,6 +88,61 @@ function copyPrev(btn){const i=btn.previousElementSibling;navigator.clipboard.wr
 function copyData(btn){navigator.clipboard.writeText(btn.dataset.copy);btn.classList.add('ok');setTimeout(()=>btn.classList.remove('ok'),1200)}
 function filterMenu(inp){const q=inp.value.toLowerCase();inp.parentElement.querySelectorAll('a[data-name]').forEach(a=>{a.hidden=!a.dataset.name.toLowerCase().includes(q)})}
 document.addEventListener('click',e=>{document.querySelectorAll('details.dropdown[open]').forEach(d=>{if(!d.contains(e.target))d.removeAttribute('open')})});
+// Live regions: elements with an id and data-live are re-fetched from the
+// current URL and swapped in place. data-live="run" (something is in flight)
+// polls every few seconds, "watch" (could change, e.g. a new run) every 15s,
+// "" only swaps along with the others. Fields the user edited, open <details>
+// and focused controls survive the swap.
+(function(){
+  const regions = () => [...document.querySelectorAll('[data-live][id]')];
+  if (!regions().length) return;
+  regions().forEach(el => { el._src = el.outerHTML; });
+  const ctls = r => [...r.querySelectorAll('input[name], textarea[name], select[name]')];
+  const key = c => (c.form ? c.form.getAttribute('action') : '') + '|' + c.name + (c.type === 'radio' || c.type === 'checkbox' ? '=' + c.value : '');
+  const dirty = c => c.type === 'radio' || c.type === 'checkbox' ? c.checked !== c.defaultChecked
+    : c.tagName === 'SELECT' ? [...c.options].some(o => o.selected !== o.defaultSelected) : c.value !== c.defaultValue;
+  const typing = el => { const a = document.activeElement; return a && el.contains(a) && a.matches('input:not([type=checkbox]):not([type=radio]):not([type=submit]), textarea, select'); };
+  function carry(from, to) {
+    const next = {}, seen = {};
+    ctls(to).forEach(c => (next[key(c)] = next[key(c)] || []).push(c));
+    ctls(from).forEach(c => {
+      const k = key(c), i = seen[k] = (seen[k] || 0) + 1, n = (next[k] || [])[i - 1];
+      if (!n || !dirty(c)) return;
+      if (c.type === 'radio' || c.type === 'checkbox') n.checked = c.checked; else n.value = c.value;
+    });
+    const open = [...from.querySelectorAll('details')].map(d => d.open);
+    to.querySelectorAll('details').forEach((d, i) => { if (i < open.length) d.open = open[i]; });
+  }
+  let timer = 0, idle = 0;
+  function schedule(now) {
+    clearTimeout(timer);
+    const modes = regions().map(e => e.dataset.live);
+    // Slow down once nothing has changed for a while (a stuck job, a quiet page).
+    const d = modes.includes('run') ? (idle < 40 ? 3000 : 10000) : modes.includes('watch') ? (idle < 20 ? 15000 : 60000) : 0;
+    if (d && !document.hidden) timer = setTimeout(poll, now ? 0 : d);
+  }
+  async function poll() {
+    let changed = false;
+    try {
+      const res = await fetch(location.href, {cache: 'no-store'});
+      if (res.ok && !res.redirected) {
+        const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+        for (const el of regions()) {
+          const next = doc.getElementById(el.id);
+          if (!next || next.outerHTML === el._src || typing(el)) continue;
+          next._src = next.outerHTML;
+          carry(el, next);
+          el.replaceWith(next);
+          changed = true;
+        }
+      }
+    } catch (e) {}
+    idle = changed ? 0 : idle + 1;
+    schedule();
+  }
+  document.addEventListener('visibilitychange', () => { idle = 0; schedule(true); });
+  schedule();
+})();
 </script>
 {{end}}
 

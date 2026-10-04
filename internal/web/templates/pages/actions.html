@@ -23,7 +23,8 @@
   {{end}}</tbody></table>
 </div>
 {{end}}
-<div class="box">
+{{$live := "watch"}}{{range $d.Runs}}{{if inflight .Status}}{{$live = "run"}}{{end}}{{range .Jobs}}{{if inflight .Status}}{{$live = "run"}}{{end}}{{end}}{{end}}
+<div class="box" id="runs" data-live="{{if eq $d.Page 1}}{{$live}}{{else if eq $live "run"}}run{{end}}">
 {{range $d.Runs}}
   <div class="run-row">
     {{template "status-icon" .Status}}

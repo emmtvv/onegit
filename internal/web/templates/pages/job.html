@@ -1,7 +1,7 @@
 {{define "content"}}{{$d := .Data}}{{$r := $d.Run}}{{$j := $d.Job}}
 <nav class="breadcrumbs">{{if $r.DeploymentID}}<a href="/deploy">Deployments</a><span class="sep">/</span><a href="/deploy/{{deint64 $r.DeploymentID}}">#{{deint64 $r.DeploymentID}}</a>{{else}}<a href="/actions">Actions</a><span class="sep">/</span><a href="/actions/runs/{{$r.ID}}">{{$r.Name}} #{{$r.ID}}</a>{{end}}<span class="sep">/</span><strong>{{$j.Name}}</strong></nav>
 <div class="with-sidenav job-layout">
-  <nav class="sidenav">
+  <nav class="sidenav" id="job-nav" data-live="{{if not $r.FinishedAt}}run{{end}}">
     {{range $d.Jobs}}<a class="{{if eq .ID $j.ID}}active{{end}}" href="/actions/jobs/{{.ID}}">{{template "status-icon" .Status}} {{.Name}}</a>{{end}}
   </nav>
   <div class="job-main">

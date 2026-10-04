@@ -171,7 +171,7 @@ func TestMonorepoFeaturesEndToEnd(t *testing.T) {
 	if p := dev.post("/pulls/1/queue", "style", "squash", "delete_branch", "on"); p.status != http.StatusSeeOther {
 		t.Fatalf("queue: %d", p.status)
 	}
-	dev.ok("/pulls/1", "In the merge queue")
+	dev.ok("/pulls/1", "In the merge queue", `id="pull-merge" data-live="run"`)
 	testutil.Eventually(t, 120*time.Second, "the queued PR to land", func() bool {
 		p, _ := h.srv.Store.PullByID(ctx, 1)
 		return p.IsMerged()

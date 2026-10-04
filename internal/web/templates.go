@@ -94,6 +94,14 @@ var funcs = template.FuncMap{
 		b, _ := json.Marshal(v)
 		return string(b)
 	},
+	// inflight: a job, run, check or deployment state that will still change.
+	"inflight": func(s string) bool {
+		switch s {
+		case "pending", "waiting", "queued", "running":
+			return true
+		}
+		return false
+	},
 	// deploystatus maps deployment/review states onto status-icon states.
 	"deploystatus": func(s string) string {
 		switch s {

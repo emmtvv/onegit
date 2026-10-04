@@ -479,6 +479,8 @@ table.diff tr:hover .add-comment { display: block; }
 .st .icon, .table td .st .icon { width: 12px; height: 12px; color: #fff; }
 .st-ok { background: var(--open); }
 .st-bad { background: var(--closed); }
+/* rebase keeps the PR's commits: no commit title or message to edit */
+.mb-form:has(select[name=style] option[value=rebase]:checked) .merge-msg { display: none; }
 .st-run { background: #d29922; animation: st-pulse 1.2s ease-in-out infinite; }
 .st-wait { background: var(--border); }
 .st-wait .icon, .table td .st-wait .icon { color: var(--fg-muted); }

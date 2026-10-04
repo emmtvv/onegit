@@ -7,6 +7,16 @@ include breaking changes, always described here.
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-10-04
+
+### Added
+
+- CI statuses update without a page reload: the pull request merge box,
+  Actions, run and job pages, projects, the merge queue and deployments
+  re-fetch themselves every few seconds while something is in flight, and
+  every 15 seconds otherwise. Edited merge fields and open sections survive
+  the refresh.
+
 ## [1.3.1] - 2026-10-04
 
 ### Fixed
@@ -144,7 +154,8 @@ First public release.
   amd64 and arm64, `docker-compose.yml` with the full stack, admin CLI
   (`list-users`, `reset-password`, `registry-gc`).
 
-[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.3.2...HEAD
+[1.3.2]: https://github.com/emmtvv/onegit/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/emmtvv/onegit/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/emmtvv/onegit/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/emmtvv/onegit/compare/v1.1.1...v1.2.0

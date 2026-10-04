@@ -16,7 +16,7 @@
 </div>
 
 {{if $d.Settings.Dimension}}
-<div class="box">
+<div class="box" id="deployed" data-live>
   <div class="box-header"><strong>Deployed</strong> <span class="muted small">latest successful deployment per target</span></div>
   <table class="table"><tbody>
   {{range $p.Deploys}}
@@ -42,7 +42,8 @@
   {{else}}<div class="blob-note">No open pull requests change this project.</div>{{end}}
 </div>
 
-<div class="box">
+{{$live := "watch"}}{{range $d.Runs}}{{if inflight .Status}}{{$live = "run"}}{{end}}{{range .Jobs}}{{if inflight .Status}}{{$live = "run"}}{{end}}{{end}}{{end}}
+<div class="box" id="runs" data-live="{{$live}}">
   <div class="box-header"><strong>Recent CI runs</strong> <span class="muted small">runs whose changes touch {{$p.Dir}}/</span><span class="spacer"></span><a class="small" href="/actions?project={{queryesc $p.Name}}">All</a></div>
   {{range $d.Runs}}
   <div class="run-row">

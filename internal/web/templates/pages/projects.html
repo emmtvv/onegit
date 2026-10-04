@@ -8,7 +8,8 @@
 {{if not $d.Configured}}
 <div class="box blob-note">Projects are not set up. An administrator sets the directories that hold projects under <a href="/admin/projects">Admin → Projects</a>.</div>
 {{else}}
-<div class="box">
+{{$live := "watch"}}{{range $d.Rows}}{{with .LastRun}}{{if inflight .Status}}{{$live = "run"}}{{end}}{{end}}{{end}}
+<div class="box" id="projects" data-live="{{$live}}">
   <table class="table projects-table">
     <thead><tr><th>Project</th><th>Owners</th><th>Last CI on the default branch</th><th>Open PRs</th>{{if $d.Settings.Dimension}}<th>Deployed</th>{{end}}</tr></thead>
     <tbody>{{range $d.Rows}}

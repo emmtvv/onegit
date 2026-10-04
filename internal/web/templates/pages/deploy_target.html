@@ -1,7 +1,8 @@
 {{define "content"}}{{$d := .Data}}
 <nav class="breadcrumbs"><a href="/deploy">Deployments</a><span class="sep">/</span><strong class="mono">{{$d.Label}}</strong></nav>
 <div class="toolbar"><span class="spacer"></span>{{if .User}}<a class="btn btn-primary" href="/deploy/new?{{$d.Query}}">{{template "icon-rocket"}}Deploy</a>{{end}}</div>
-<div class="box">
+{{$live := "watch"}}{{range $d.History}}{{if inflight .Status}}{{$live = "run"}}{{end}}{{end}}
+<div class="box" id="history" data-live="{{$live}}">
   <table class="table">
     <thead><tr><th>Status</th><th>Version</th><th>Deployment</th><th>By</th><th>When</th><th></th></tr></thead>
     <tbody>{{range $d.History}}

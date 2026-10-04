@@ -1,4 +1,5 @@
 {{define "content"}}{{$d := .Data}}
+<div id="queue" data-live="{{if $d.Queues}}run{{else}}watch{{end}}">
 <div class="toolbar">
   <div class="btn-group">
     <a class="btn" href="/pulls">{{template "icon-pr"}}{{$d.Open}} Open</a>
@@ -34,4 +35,5 @@
   {{end}}</tbody></table>
 </div>
 {{end}}
+</div>
 {{end}}

@@ -16,7 +16,7 @@
     {{end}}
   </div>
   <div class="pull-sub">
-    {{template "pull-state" $p}}
+    <span id="pull-state" data-live>{{template "pull-state" $p}}</span>
     <span><strong>{{$p.AuthorName}}</strong>
     {{if $p.IsMerged}}merged {{$d.CommitCount}} commit{{if ne $d.CommitCount 1}}s{{end}} into{{else}}wants to merge {{$d.CommitCount}} commit{{if ne $d.CommitCount 1}}s{{end}} into{{end}}
     <a class="branch-name" href="/tree/{{pathesc $p.BaseBranch}}">{{$p.BaseBranch}}</a> from
@@ -94,6 +94,7 @@
     {{end}}{{end}}
   {{end}}
 
+  <div id="pull-merge" data-live="{{if $p.IsOpen}}{{if or (eq $d.Status.ChecksState "wait") $d.Queue $p.AutoMerge}}run{{else}}watch{{end}}{{end}}">
   {{if $p.IsOpen}}{{template "merge-box" .}}
   {{else}}
   <div class="box state-box {{if $p.IsMerged}}state-box-merged{{else}}state-box-closed{{end}}">
@@ -105,6 +106,7 @@
     {{end}}
   </div>
   {{end}}
+  </div>
 
   {{if $u}}
   <form method="post" action="/pulls/{{$p.ID}}/comments" class="box pad form comment-form">
@@ -333,7 +335,7 @@
 
 {{define "pull-scripts"}}
 <script>
-function mergeStyle(sel){const o=sel.selectedOptions[0],f=sel.form.elements;f.title.value=o.dataset.title;f.message.value=o.dataset.body;sel.form.querySelectorAll('.merge-msg').forEach(e=>e.hidden=sel.value==='rebase')}
+function mergeStyle(sel){const o=sel.selectedOptions[0],f=sel.form.elements;f.title.value=o.dataset.title;f.message.value=o.dataset.body}
 function lineComment(btn){
   const tr=btn.closest('tr'),next=tr.nextElementSibling;
   if(next&&next.classList.contains('new-comment')){next.querySelector('textarea').focus();return}
