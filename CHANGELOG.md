@@ -7,6 +7,22 @@ include breaking changes, always described here.
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-10-04
+
+### Changed
+
+- The new deployment page is redesigned. Targets are picked with toggles per
+  dimension, and the version with the newest branches and tags one click
+  away; the chosen commit is shown with its author and age.
+- A deployment plan beside the form lists every target as you pick it: what
+  runs there now, the new commit, how many commits it adds or rolls back,
+  and when the target was last deployed. After Check each target shows
+  ready, needs approval or blocked with the reasons, and the plan says whose
+  approval is missing. Changing the choice afterwards marks the check as
+  out of date.
+- The deploy button reads "Deploy now" when the checks pass and no approval
+  is needed, and is disabled when a check blocks the deployment.
+
 ## [1.4.0] - 2026-10-04
 
 ### Changed
