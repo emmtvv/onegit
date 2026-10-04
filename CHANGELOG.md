@@ -7,6 +7,13 @@ include breaking changes, always described here.
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-10-04
+
+### Fixed
+
+- The runner reads its capacity from `ONEGIT_RUNNER_CAPACITY`; before only
+  the `-capacity` flag worked.
+
 ## [1.3.0] - 2026-10-04
 
 ### Changed
@@ -137,7 +144,8 @@ First public release.
   amd64 and arm64, `docker-compose.yml` with the full stack, admin CLI
   (`list-users`, `reset-password`, `registry-gc`).
 
-[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/emmtvv/onegit/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/emmtvv/onegit/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/emmtvv/onegit/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/emmtvv/onegit/compare/v1.1.0...v1.1.1

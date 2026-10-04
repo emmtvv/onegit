@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -92,7 +93,15 @@ func cmdRunner(args []string) error {
 	url := fs.String("url", os.Getenv("ONEGIT_RUNNER_URL"), "onegit base URL (ONEGIT_RUNNER_URL)")
 	token := fs.String("token", os.Getenv("ONEGIT_RUNNER_TOKEN"), "runner token (ONEGIT_RUNNER_TOKEN)")
 	workdir := fs.String("workdir", envOr("ONEGIT_RUNNER_WORKDIR", "./onegit-runner"), "work directory (ONEGIT_RUNNER_WORKDIR)")
-	capacity := fs.Int("capacity", 1, "jobs to run at the same time")
+	defCapacity := 1
+	if v := os.Getenv("ONEGIT_RUNNER_CAPACITY"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			return fmt.Errorf("ONEGIT_RUNNER_CAPACITY: want a positive integer, got %q", v)
+		}
+		defCapacity = n
+	}
+	capacity := fs.Int("capacity", defCapacity, "jobs to run at the same time (ONEGIT_RUNNER_CAPACITY)")
 	keep := fs.Bool("keep-workspaces", false, "keep job workspaces after they finish (debugging)")
 	fs.Parse(args)
 

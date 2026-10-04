@@ -94,5 +94,5 @@ Runners are configured separately (see [ci.md](ci.md#runners)):
 | `ONEGIT_RUNNER_URL` / `-url` | onegit base URL |
 | `ONEGIT_RUNNER_TOKEN` / `-token` | Runner token from Admin → Runners |
 | `ONEGIT_RUNNER_WORKDIR` / `-workdir` | Work directory (default `./onegit-runner`) |
-| `-capacity` | Jobs run at the same time (default 1) |
+| `ONEGIT_RUNNER_CAPACITY` / `-capacity` | Jobs run at the same time (default 1) |
 | `-keep-workspaces` | Keep job directories after they finish, for debugging |
