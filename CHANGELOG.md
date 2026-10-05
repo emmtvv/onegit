@@ -7,6 +7,19 @@ include breaking changes, always described here.
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-10-05
+
+### Fixed
+
+- The pull request conversation now lists commits. It shows the commits the
+  pull request was opened with, and each push lists the commits it added
+  (after a force-push, only the new tip). Before, a push appeared as a single
+  line naming only its last commit, and the commits the pull request was
+  opened with did not appear at all.
+- Each listed commit shows the combined state of its checks. Clicking it
+  expands the individual checks with links to their runs, so the pipelines a
+  new push started are visible in the timeline.
+
 ## [1.5.1] - 2026-10-04
 
 ### Added
@@ -248,7 +261,8 @@ First public release.
   amd64 and arm64, `docker-compose.yml` with the full stack, admin CLI
   (`list-users`, `reset-password`, `registry-gc`).
 
-[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.5.2...HEAD
+[1.5.2]: https://github.com/emmtvv/onegit/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/emmtvv/onegit/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/emmtvv/onegit/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/emmtvv/onegit/compare/v1.4.0...v1.4.1

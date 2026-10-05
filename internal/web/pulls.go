@@ -211,6 +211,30 @@ type timelineItem struct {
 	Thread  *thread
 	Review  *store.PullReview
 	Event   *store.PullEvent
+	Commits []*timelineCommit // opened with, or pushed by Event
+}
+
+// timelineCommit is a commit shown in the conversation with its checks.
+type timelineCommit struct {
+	*git.Commit
+	Checks []*store.CommitStatus
+}
+
+// ChecksState sums up the commit's checks: "" (none), "ok", "wait" or "bad".
+func (c *timelineCommit) ChecksState() string {
+	if len(c.Checks) == 0 {
+		return ""
+	}
+	state := "ok"
+	for _, st := range c.Checks {
+		switch {
+		case st.State == "pending" || st.State == "running":
+			state = "wait"
+		case !st.OK():
+			return "bad"
+		}
+	}
+	return state
 }
 
 func (w *Web) pullView(rw http.ResponseWriter, r *http.Request) {
@@ -256,7 +280,8 @@ func (w *Web) pullView(rw http.ResponseWriter, r *http.Request) {
 			w.fail(rw, r, err)
 			return
 		}
-		data["Timeline"] = buildTimeline(comments, threads, reviews, events)
+		items := buildTimeline(comments, threads, reviews, events)
+		data["Timeline"] = w.addTimelineCommits(ctx, p, items, events)
 		if p.IsOpen() {
 			st, err := w.Pulls.Status(ctx, p, reviews)
 			if err != nil {
@@ -362,6 +387,59 @@ func buildTimeline(comments []*store.PullComment, threads []*thread, reviews []*
 		items = append(items, timelineItem{When: e.CreatedAt, Event: e})
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].When.Before(items[j].When) })
+	return items
+}
+
+// maxTimelineCommits caps the commits listed for one push.
+const maxTimelineCommits = 50
+
+// addTimelineCommits lists the commits a PR was opened with (first) and the
+// commits of every push, each with its checks, so new pushes and the CI runs
+// they started show up in the conversation.
+func (w *Web) addTimelineCommits(ctx context.Context, p *store.Pull, items []timelineItem, events []*store.PullEvent) []timelineItem {
+	commits := func(from, to string) []*timelineCommit {
+		if from == "" || to == "" || from == to {
+			return nil
+		}
+		cs, err := w.Repo.Log(ctx, from+".."+to, git.LogOptions{Limit: maxTimelineCommits})
+		if err != nil {
+			return nil
+		}
+		out := make([]*timelineCommit, len(cs))
+		for i, c := range cs { // oldest first, like the conversation
+			out[len(cs)-1-i] = &timelineCommit{Commit: c}
+		}
+		for _, c := range out {
+			c.Checks, _ = w.Store.CommitStatuses(ctx, c.SHA)
+		}
+		return out
+	}
+	str := func(v any) string { s, _ := v.(string); return s }
+
+	// The head the PR was opened with: where the first push started from.
+	openedHead := p.HeadSHA
+	for _, e := range events {
+		if e.Kind == "pushed" {
+			openedHead = str(e.Data["from"])
+			break
+		}
+	}
+	for i := range items {
+		if e := items[i].Event; e != nil && e.Kind == "pushed" {
+			to := str(e.Data["to"])
+			if forced, _ := e.Data["forced"].(bool); !forced {
+				items[i].Commits = commits(str(e.Data["from"]), to)
+			} else if c, err := w.Repo.Log(ctx, to, git.LogOptions{Limit: 1}); err == nil && len(c) > 0 {
+				// Rewritten history: only the new tip is meaningful.
+				tc := &timelineCommit{Commit: c[0]}
+				tc.Checks, _ = w.Store.CommitStatuses(ctx, tc.SHA)
+				items[i].Commits = []*timelineCommit{tc}
+			}
+		}
+	}
+	if opened := commits(p.MergeBase, openedHead); len(opened) > 0 {
+		items = append([]timelineItem{{When: p.CreatedAt, Commits: opened}}, items...)
+	}
 	return items
 }
 

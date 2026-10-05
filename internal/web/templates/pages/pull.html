@@ -92,6 +92,24 @@
         <span class="muted" title="{{datetime .CreatedAt}}">{{ago .CreatedAt}}</span>
       </div>
     {{end}}{{end}}
+    {{with .Commits}}
+      <div class="tl-commits">
+        {{range .}}{{$c := .}}
+        <div class="tl-commit">
+          {{template "icon-commit"}}
+          <a class="subject" href="/commit/{{.SHA}}">{{.Subject}}</a>
+          <span class="spacer"></span>
+          {{with .ChecksState}}<details class="tl-checks">
+            <summary title="Checks">{{template "merge-mark" .}}</summary>
+            <div class="tl-checks-list">{{range $c.Checks}}
+              <span class="mb-chip">{{template "status-icon" .State}}<a href="{{.TargetURL}}">{{.Context}}</a> <span class="small">{{.Description}}</span></span>{{end}}
+            </div>
+          </details>{{end}}
+          <a class="sha" href="/commit/{{.SHA}}">{{shortsha .SHA}}</a>
+        </div>
+        {{end}}
+      </div>
+    {{end}}
   {{end}}
 
   <div id="pull-merge" data-live="{{if $p.IsOpen}}{{if or (eq $d.Status.ChecksState "wait") $d.Queue $p.AutoMerge}}run{{else}}watch{{end}}{{end}}">

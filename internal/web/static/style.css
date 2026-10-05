@@ -408,6 +408,15 @@ table.diff tr.hunk .code { padding-left: 8px; }
 .tl-badge { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin-left: -27px; border-radius: 50%;
   background: var(--bg-inset); color: var(--fg-muted); border: 2px solid var(--canvas); flex-shrink: 0; }
 .tl-badge.inline { margin-left: 0; width: 24px; height: 24px; }
+.tl-commits { margin: -8px 0 12px 12px; padding: 0 0 4px 22px; border-left: 2px solid var(--border); }
+.tl-commit { display: flex; align-items: center; gap: 8px; padding: 3px 0; color: var(--fg-muted); min-width: 0; }
+.tl-commit .subject { color: var(--fg); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-commit .subject:hover { color: var(--accent); }
+.tl-checks { position: relative; }
+.tl-checks summary { list-style: none; cursor: pointer; display: flex; }
+.tl-checks summary::-webkit-details-marker { display: none; }
+.tl-checks-list { position: absolute; right: 0; top: 24px; z-index: 5; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px;
+  min-width: 240px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.25); }
 .tl-ok { background: var(--open); color: #fff; }
 .tl-bad { background: var(--closed); color: #fff; }
 .tl-merged { background: var(--merged); color: #fff; }
