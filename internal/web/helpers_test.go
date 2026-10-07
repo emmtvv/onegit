@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"errors"
 	"io/fs"
 	"net/http"
@@ -47,14 +48,19 @@ func TestHighlight(t *testing.T) {
 	if out := string(highlight("x.unknownext", []byte("<b>plain</b>"))); strings.Contains(out, "<b>") {
 		t.Errorf("unescaped fallback: %s", out)
 	}
-	css := string(chromaCSS())
-	if !strings.Contains(css, "prefers-color-scheme: dark") || strings.Contains(css, "background-color: #") {
-		t.Errorf("chroma CSS not themed:\n%.300s", css)
+	for _, theme := range []string{"light", "dark"} {
+		css := string(chromaCSS()[theme])
+		if !strings.Contains(css, ".chroma") || strings.Contains(css, "background-color: #") {
+			t.Errorf("chroma CSS %s not themed:\n%.300s", theme, css)
+		}
+		rec := httptest.NewRecorder()
+		serveChromaCSS(theme)(rec, httptest.NewRequest("GET", "/static/chroma-"+theme+".css", nil))
+		if rec.Header().Get("Content-Type") != "text/css; charset=utf-8" {
+			t.Errorf("chroma-%s.css content type %q", theme, rec.Header().Get("Content-Type"))
+		}
 	}
-	rec := httptest.NewRecorder()
-	serveChromaCSS(rec, httptest.NewRequest("GET", "/static/chroma.css", nil))
-	if rec.Header().Get("Content-Type") != "text/css; charset=utf-8" {
-		t.Errorf("chroma.css content type %q", rec.Header().Get("Content-Type"))
+	if bytes.Equal(chromaCSS()["light"], chromaCSS()["dark"]) {
+		t.Error("light and dark chroma CSS are the same")
 	}
 }
 

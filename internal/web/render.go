@@ -100,23 +100,28 @@ func tokenClass(t chroma.TokenType) string {
 	return ""
 }
 
-var chromaCSS = sync.OnceValue(func() []byte {
-	// Each theme lives in its own media block so light colours never leak
-	// into dark mode for token classes the dark style leaves undefined.
-	var buf bytes.Buffer
-	buf.WriteString("@media (prefers-color-scheme: light) {\n")
-	_ = formatter.WriteCSS(&buf, styles.Get("github")) // writes to memory
-	buf.WriteString("}\n@media (prefers-color-scheme: dark) {\n")
-	_ = formatter.WriteCSS(&buf, styles.Get("github-dark"))
-	buf.WriteString("}\n")
-	// Let our own CSS control backgrounds so the code blends with the page.
-	return bytes.ReplaceAll(buf.Bytes(), []byte("background-color: #"), []byte("--chroma-bg: #"))
+// chromaCSS is the token colours for each UI theme, served as separate
+// files so the layout can apply one of them by media query (see Page.LightMedia).
+// Keeping them apart means light colours never leak into dark mode for token
+// classes the dark style leaves undefined.
+var chromaCSS = sync.OnceValue(func() map[string][]byte {
+	out := map[string][]byte{}
+	for theme, style := range map[string]string{"light": "github", "dark": "github-dark"} {
+		var buf bytes.Buffer
+		_ = formatter.WriteCSS(&buf, styles.Get(style)) // writes to memory
+		// Let our own CSS control backgrounds so the code blends with the page.
+		out[theme] = bytes.ReplaceAll(buf.Bytes(), []byte("background-color: #"), []byte("--chroma-bg: #"))
+	}
+	return out
 })
 
-func serveChromaCSS(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/css; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
-	w.Write(chromaCSS())
+func serveChromaCSS(theme string) http.HandlerFunc {
+	css := chromaCSS()[theme]
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		w.Write(css)
+	}
 }
 
 var md = goldmark.New(

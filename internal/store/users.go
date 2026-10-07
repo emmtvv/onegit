@@ -17,6 +17,17 @@ func (r Role) Valid() bool { return r == RoleRead || r == RoleWrite || r == Role
 
 func (r Role) CanWrite() bool { return r == RoleWrite || r == RoleAdmin }
 
+// Theme is a user's colour theme for the web UI.
+type Theme string
+
+const (
+	ThemeSystem Theme = "system" // follow the browser's preference
+	ThemeLight  Theme = "light"
+	ThemeDark   Theme = "dark"
+)
+
+func (t Theme) Valid() bool { return t == ThemeSystem || t == ThemeLight || t == ThemeDark }
+
 type User struct {
 	ID                 int64
 	Username           string
@@ -27,6 +38,7 @@ type User struct {
 	Role               Role
 	Active             bool
 	OIDCSubject        *string
+	Theme              Theme
 	CreatedAt          time.Time
 
 	// Job is set (and the user is synthetic, never saved) when a CI job
@@ -57,12 +69,12 @@ func (u *User) DisplayName() string {
 	return u.Username
 }
 
-const userCols = `id, username, email, full_name, password_hash, must_change_password, role, active, oidc_subject, created_at`
+const userCols = `id, username, email, full_name, password_hash, must_change_password, role, active, oidc_subject, theme, created_at`
 
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var u User
 	err := row.Scan(&u.ID, &u.Username, &u.Email, &u.FullName, &u.PasswordHash, &u.MustChangePassword,
-		&u.Role, &u.Active, &u.OIDCSubject, &u.CreatedAt)
+		&u.Role, &u.Active, &u.OIDCSubject, &u.Theme, &u.CreatedAt)
 	if err != nil {
 		return nil, notFound(err)
 	}
@@ -105,6 +117,12 @@ func (s *Store) UpdateUser(ctx context.Context, u *User) error {
 	if isUniqueViolation(err) {
 		return ErrDuplicate
 	}
+	return err
+}
+
+// SetUserTheme saves the user's colour theme for the web UI.
+func (s *Store) SetUserTheme(ctx context.Context, id int64, theme Theme) error {
+	_, err := s.db.Exec(ctx, `UPDATE users SET theme=$2 WHERE id=$1`, id, theme)
 	return err
 }
 

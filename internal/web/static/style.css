@@ -31,36 +31,6 @@
   --display: "Bricolage Grotesque", "Onest", -apple-system, "Segoe UI", sans-serif;
   color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --canvas: #10121c;
-    --bg: #181b28;
-    --bg-subtle: #1e2231;
-    --bg-inset: #252a3c;
-    --fg: #e9eaf2;
-    --fg-muted: #9296ad;
-    --border: #2a2f43;
-    --border-muted: #22263a;
-    --accent: #8ca1ff;
-    --accent-fg: #10121c;
-    --accent-subtle: #232b4d;
-    --danger: #f85149;
-    --add-bg: #12261b;
-    --add-ln: #1a3a26;
-    --add-fg: #3fb950;
-    --del-bg: #2c1618;
-    --del-ln: #45191c;
-    --del-fg: #f85149;
-    --hunk-bg: #1c2240;
-    --hl-bg: #3a3212;
-    --card: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
-    --pop: 0 16px 40px rgba(0, 0, 0, .5);
-    --c-code: #8ca1ff; --c-commits: #b394ff; --c-branch: #4fd1bd; --c-tags: #f2b24a;
-    --c-pr: #5ad08c; --c-pkg: #f08cc8; --c-act: #ff9a5a; --c-dep: #6fb0ff; --c-admin: #9296ad;
-    --folder: #f2b24a;
-    color-scheme: dark;
-  }
-}
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -119,6 +89,23 @@ img.avatar { object-fit: cover; background: var(--bg); }
 .avatar-edit { display: flex; gap: 20px; align-items: flex-start; }
 .avatar-edit p { margin: 0; }
 .avatar-upload { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* ---- theme picker (settings) ---- */
+.theme-picker { display: flex; gap: 12px; flex-wrap: wrap; }
+.form .theme-option { position: relative; flex-direction: column; align-items: center; gap: 8px; padding: 10px 10px 8px; border: 2px solid var(--border);
+  border-radius: 14px; cursor: pointer; font-weight: 500; }
+.theme-option:hover { background: var(--bg-subtle); }
+.theme-option:has(input:checked) { border-color: var(--accent); font-weight: 600; }
+.theme-option:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.theme-option input { position: absolute; opacity: 0; pointer-events: none; }
+/* a miniature page: canvas with a card in it, in fixed colours of each theme */
+.theme-swatch { display: block; width: 96px; height: 60px; border-radius: 8px; padding: 10px 0 0 12px; overflow: hidden;
+  border: 1px solid var(--border); }
+.theme-swatch > span { display: block; height: 100%; border-radius: 6px 0 0 0; }
+.theme-swatch-light { background: #eceef5; } .theme-swatch-light > span { background: #ffffff; }
+.theme-swatch-dark { background: #10121c; } .theme-swatch-dark > span { background: #181b28; }
+.theme-swatch-system { background: linear-gradient(90deg, #eceef5 48px, #10121c 48px); }
+.theme-swatch-system > span { background: linear-gradient(90deg, #ffffff 36px, #181b28 36px); }
 
 /* ---- buttons ---- */
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 16px; font: 500 14px/20px var(--sans); color: var(--fg);
@@ -207,7 +194,6 @@ textarea { resize: vertical; width: 100%; }
 .icon-folder-dot { color: var(--fg-muted); opacity: .7; }
 .icon-file { color: var(--fg-muted); }
 .ficon { color: var(--fc, var(--fg-muted)); }
-@media (prefers-color-scheme: dark) { .ficon { filter: brightness(1.12); } }
 .file-header .ficon, .readme .ficon { margin-right: 2px; }
 .filelist .ficon { margin-right: 2px; vertical-align: -3px; }
 
@@ -363,7 +349,6 @@ table.diff tr.hunk .code { padding-left: 8px; }
 
 /* ---- pull requests ---- */
 :root { --merged: #8250df; --open: #1a7f37; --closed: #cf222e; }
-@media (prefers-color-scheme: dark) { :root { --merged: #a371f7; --open: #3fb950; --closed: #f85149; } }
 .counter { display: inline-block; min-width: 20px; padding: 0 6px; margin-left: 4px; font-size: 12px; font-weight: 600; line-height: 18px;
   text-align: center; background: var(--bg-inset); border-radius: 999px; color: var(--fg); }
 .pull-row { display: flex; align-items: flex-start; gap: 10px; padding: 12px 20px; border-top: 1px solid var(--border-muted); }

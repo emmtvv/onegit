@@ -1,0 +1,32 @@
+/* Dark theme: overrides style.css. The layout links it with a media
+   attribute that follows the user's theme setting. */
+:root {
+  --canvas: #10121c;
+  --bg: #181b28;
+  --bg-subtle: #1e2231;
+  --bg-inset: #252a3c;
+  --fg: #e9eaf2;
+  --fg-muted: #9296ad;
+  --border: #2a2f43;
+  --border-muted: #22263a;
+  --accent: #8ca1ff;
+  --accent-fg: #10121c;
+  --accent-subtle: #232b4d;
+  --danger: #f85149;
+  --add-bg: #12261b;
+  --add-ln: #1a3a26;
+  --add-fg: #3fb950;
+  --del-bg: #2c1618;
+  --del-ln: #45191c;
+  --del-fg: #f85149;
+  --hunk-bg: #1c2240;
+  --hl-bg: #3a3212;
+  --card: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
+  --pop: 0 16px 40px rgba(0, 0, 0, .5);
+  --c-code: #8ca1ff; --c-commits: #b394ff; --c-branch: #4fd1bd; --c-tags: #f2b24a;
+  --c-pr: #5ad08c; --c-pkg: #f08cc8; --c-act: #ff9a5a; --c-dep: #6fb0ff; --c-admin: #9296ad;
+  --folder: #f2b24a;
+  color-scheme: dark;
+}
+:root { --merged: #a371f7; --open: #3fb950; --closed: #f85149; }
+.ficon { filter: brightness(1.12); }

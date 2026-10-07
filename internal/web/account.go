@@ -158,6 +158,19 @@ func (w *Web) settingsPassword(rw http.ResponseWriter, r *http.Request) {
 	w.redirectFlash(rw, r, "/settings", "Password updated.")
 }
 
+func (w *Web) settingsTheme(rw http.ResponseWriter, r *http.Request) {
+	theme := store.Theme(r.FormValue("theme"))
+	if !theme.Valid() {
+		w.redirectFlash(rw, r, "/settings", "Unknown theme.")
+		return
+	}
+	if err := w.Store.SetUserTheme(r.Context(), currentUser(r).ID, theme); err != nil {
+		w.serverError(rw, r, err)
+		return
+	}
+	w.redirectFlash(rw, r, "/settings", "Theme updated.")
+}
+
 // changePasswordPage is the mandatory stop for users with a temporary
 // password (the initial admin, or users whose password an admin has set).
 func (w *Web) changePasswordPage(rw http.ResponseWriter, r *http.Request) {

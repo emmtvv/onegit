@@ -70,7 +70,8 @@ func (w *Web) routes() http.Handler {
 	mux := http.NewServeMux()
 	static, _ := fs.Sub(assets, "static")
 	mux.Handle("GET /static/", http.StripPrefix("/static/", staticHandler(static)))
-	mux.HandleFunc("GET /static/chroma.css", serveChromaCSS)
+	mux.HandleFunc("GET /static/chroma-light.css", serveChromaCSS("light"))
+	mux.HandleFunc("GET /static/chroma-dark.css", serveChromaCSS("dark"))
 
 	// Auth
 	mux.HandleFunc("GET /login", w.loginPage)
@@ -149,6 +150,7 @@ func (w *Web) routes() http.Handler {
 	// User settings
 	mux.Handle("GET /settings", login(w.settingsProfile))
 	mux.Handle("POST /settings/password", login(w.settingsPassword))
+	mux.Handle("POST /settings/theme", login(w.settingsTheme))
 	mux.Handle("POST /settings/avatar", login(w.settingsAvatar))
 	mux.Handle("POST /settings/avatar/delete", login(w.deleteAvatar))
 	mux.Handle("GET /settings/tokens", login(w.settingsTokens))
@@ -310,6 +312,37 @@ type Page struct {
 	OpenPulls int
 	// Projects: the Projects tab is shown.
 	Projects bool
+}
+
+// theme is the signed-in user's colour theme; anonymous visitors (and CI
+// job identities) follow the browser.
+func (p *Page) theme() store.Theme {
+	if p.User != nil && p.User.Theme.Valid() {
+		return p.User.Theme
+	}
+	return store.ThemeSystem
+}
+
+// LightMedia and DarkMedia are the media attributes of the layout's light
+// and dark stylesheets, so the user's theme applies without any script.
+func (p *Page) LightMedia() string {
+	switch p.theme() {
+	case store.ThemeLight:
+		return "all"
+	case store.ThemeDark:
+		return "not all"
+	}
+	return "(prefers-color-scheme: light)"
+}
+
+func (p *Page) DarkMedia() string {
+	switch p.theme() {
+	case store.ThemeLight:
+		return "not all"
+	case store.ThemeDark:
+		return "all"
+	}
+	return "(prefers-color-scheme: dark)"
 }
 
 func (w *Web) render(rw http.ResponseWriter, r *http.Request, status int, name string, p *Page) {

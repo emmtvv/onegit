@@ -31,6 +31,18 @@
       </div>
     </div>
     <div class="box pad">
+      <h2>Theme</h2>
+      <form method="post" action="/settings/theme" class="form">
+        <div class="theme-picker">
+          <label class="theme-option"><input type="radio" name="theme" value="system"{{if eq .User.Theme "system"}} checked{{end}}><span class="theme-swatch theme-swatch-system" aria-hidden="true"><span></span></span>System</label>
+          <label class="theme-option"><input type="radio" name="theme" value="light"{{if eq .User.Theme "light"}} checked{{end}}><span class="theme-swatch theme-swatch-light" aria-hidden="true"><span></span></span>Light</label>
+          <label class="theme-option"><input type="radio" name="theme" value="dark"{{if eq .User.Theme "dark"}} checked{{end}}><span class="theme-swatch theme-swatch-dark" aria-hidden="true"><span></span></span>Dark</label>
+        </div>
+        <p class="muted small">System follows your operating system or browser setting.</p>
+        <div><button class="btn" type="submit">Save theme</button></div>
+      </form>
+    </div>
+    <div class="box pad">
       <h2>{{if .User.PasswordHash}}Change password{{else}}Set a password{{end}}</h2>
       {{if not .User.PasswordHash}}<p class="muted">You sign in with {{.Cfg.OIDC.DisplayName}}. For git over HTTPS, an <a href="/settings/tokens">access token</a> is usually a better choice than a password.</p>{{end}}
       <form method="post" action="/settings/password" class="form narrow">

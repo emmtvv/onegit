@@ -7,6 +7,14 @@ include breaking changes, always described here.
 
 ## [Unreleased]
 
+## [1.5.3] - 2026-10-07
+
+### Added
+
+- A theme setting in Settings → Profile: System (follows the operating
+  system or browser, as before), Light or Dark. It is saved per user and
+  applied without JavaScript.
+
 ## [1.5.2] - 2026-10-05
 
 ### Fixed
@@ -261,7 +269,8 @@ First public release.
   amd64 and arm64, `docker-compose.yml` with the full stack, admin CLI
   (`list-users`, `reset-password`, `registry-gc`).
 
-[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.5.2...HEAD
+[Unreleased]: https://github.com/emmtvv/onegit/compare/v1.5.3...HEAD
+[1.5.3]: https://github.com/emmtvv/onegit/compare/v1.5.2...v1.5.3
 [1.5.2]: https://github.com/emmtvv/onegit/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/emmtvv/onegit/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/emmtvv/onegit/compare/v1.4.1...v1.5.0
