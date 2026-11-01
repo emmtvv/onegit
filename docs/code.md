@@ -8,6 +8,14 @@ or file being viewed. **Blame** (on every file) shows, for each run of lines,
 the commit that last changed them, colour-coded by age; the history icon
 next to a commit opens the blame from just before it changed those lines.
 
+Below the file list, **Languages** shows what the directory's code is
+written in, as a share of bytes per language, like GitHub. Languages are
+detected by file name; data, prose and configuration (JSON, YAML, Markdown)
+and vendored or generated files (`vendor/`, `node_modules/`, `*.min.js`,
+`*.pb.go`, …) don't count, and languages under 0.1% are grouped as *Other*.
+The breakdown is cached per directory tree, so it is computed once for each
+version of a directory.
+
 ## Search
 
 The search box in the top bar searches the files of the default branch

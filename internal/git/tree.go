@@ -1,6 +1,7 @@
 package git
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"io"
@@ -167,4 +168,54 @@ func (r *Repo) MatchDirs(ctx context.Context, commit, pattern string) []string {
 		}
 	}
 	return found
+}
+
+// TreeID returns the id of the directory's tree at a commit.
+func (r *Repo) TreeID(ctx context.Context, commit, dir string) (string, error) {
+	out, err := r.run(ctx, nil, "rev-parse", "--verify", "--quiet", commit+"^{tree}:"+dir)
+	if err != nil {
+		return "", ErrNotExist
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// WalkBlobs calls fn with the path (relative to the tree) and size of every
+// file under a tree, streaming so huge trees are never held in memory.
+func (r *Repo) WalkBlobs(ctx context.Context, tree string, fn func(p string, size int64)) error {
+	cmd := r.Cmd(ctx, "ls-tree", "-r", "-z", "--long", tree)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	sc := bufio.NewScanner(stdout)
+	sc.Buffer(make([]byte, 64<<10), 1<<20)
+	sc.Split(func(data []byte, atEOF bool) (int, []byte, error) {
+		if i := bytes.IndexByte(data, 0); i >= 0 {
+			return i + 1, data[:i], nil
+		}
+		if atEOF && len(data) > 0 {
+			return len(data), data, nil
+		}
+		return 0, nil, nil
+	})
+	for sc.Scan() {
+		meta, name, ok := strings.Cut(sc.Text(), "\t")
+		if !ok {
+			continue
+		}
+		f := strings.Fields(meta)
+		if len(f) != 4 || f[1] != string(EntryBlob) || f[0] == "120000" {
+			continue
+		}
+		size, _ := strconv.ParseInt(f[3], 10, 64)
+		fn(name, size)
+	}
+	io.Copy(io.Discard, stdout)
+	if err := cmd.Wait(); err != nil {
+		return err
+	}
+	return sc.Err()
 }

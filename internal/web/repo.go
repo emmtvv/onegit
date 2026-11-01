@@ -103,6 +103,7 @@ func (w *Web) tree(rw http.ResponseWriter, r *http.Request) {
 		Data: map[string]any{
 			"Ref": rv.Ref, "Path": rv.Path, "Rows": rows, "Head": head,
 			"Readme": readme, "ReadmeHTML": readmeHTML, "Owners": owners, "Project": project,
+			"Languages": w.languageStats(ctx, rv.Ref.SHA, rv.Path),
 		},
 	})
 }

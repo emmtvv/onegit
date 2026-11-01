@@ -695,3 +695,11 @@ td.age { width: 3px; min-width: 3px; padding: 0; }
 .nowrap { white-space: nowrap; }
 .project-head h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; }
 .page-title .icon { width: 20px; height: 20px; color: var(--c-code); }
+
+/* Languages of the directory (tree page) */
+.lang-body { padding: 14px 20px 12px; }
+.lang-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; gap: 2px; background: var(--bg-inset); }
+.lang-bar span { min-width: 2px; }
+.lang-list { display: flex; flex-wrap: wrap; gap: 6px 18px; list-style: none; margin: 12px 0 0; padding: 0; font-size: 13px; }
+.lang-list li { display: flex; align-items: center; gap: 6px; }
+.lang-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }

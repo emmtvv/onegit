@@ -28,6 +28,17 @@
     </tbody>
   </table>
 </div>
+{{with $d.Languages}}
+<div class="box languages">
+  <div class="box-header"><strong>Languages</strong></div>
+  <div class="lang-body">
+    <div class="lang-bar">{{range .}}<span style="width: {{printf "%.3f" .Percent}}%; background: {{.Color}}" title="{{.Name}} {{printf "%.1f" .Percent}}%"></span>{{end}}</div>
+    <ul class="lang-list">{{range .}}
+      <li><span class="lang-dot" style="background: {{.Color}}"></span><strong>{{.Name}}</strong> <span class="muted">{{printf "%.1f" .Percent}}%</span></li>{{end}}
+    </ul>
+  </div>
+</div>
+{{end}}
 {{if $d.ReadmeHTML}}
 <div class="box readme">
   <div class="box-header">{{fileicon $d.Readme.Name}}<a class="muted-link" href="/blob/{{pathesc $ref $d.Readme.Path}}">{{$d.Readme.Name}}</a></div>

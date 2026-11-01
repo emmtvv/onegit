@@ -5,7 +5,17 @@ Notable changes to onegit are recorded here, following
 [semantic versioning](https://semver.org/); before 1.0 minor versions may
 include breaking changes, always described here.
 
-## [Unreleased]
+## [1.5.4] - 2026-11-01
+
+### Added
+
+- **Languages.** The Code page shows what the directory's code is written
+  in, below the file list: a bar and a legend with each language's share of
+  bytes, like GitHub. Languages are detected by file name; data, prose and
+  configuration (JSON, YAML, Markdown) and vendored or generated files
+  (`vendor/`, `node_modules/`, `*.min.js`, `*.pb.go`, …) don't count, and
+  languages under 0.1% are grouped as *Other*. The breakdown is cached in
+  Redis per directory tree, so each version of a directory is counted once.
 
 ## [1.5.3] - 2026-10-07
 
